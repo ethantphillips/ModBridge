@@ -92,10 +92,9 @@ jobs:
           EOF
 
       - name: Setup Dasel
-        uses: jaxxstorm/action-install-gh-release@v3.0.0
+        uses: taiki-e/install-action@b6ff580856c41316412a0b9b60540fbc6f8c82cc # v2.86.7
         with:
-          repo: TomWright/dasel
-          tag: v2.8.1
+          tool: dasel@2.8.1
 
       - name: Install dependencies
         run: pnpm install --no-frozen-lockfile
