@@ -72,15 +72,17 @@ The following table details every file added or modified in the repository, its 
 | `packages/app-lib/src/api/instance/run.rs` | **MODIFIED** | Minecraft game launch logic | Skipped Mojang session server join (`/session/minecraft/join`) when launching offline accounts; routed online session join through relay. |
 | `packages/app-lib/src/util/fetch.rs` | **MODIFIED** | Central HTTP fetching engine | Intercepted outgoing requests to route allowlisted Modrinth and Mojang URLs through relay and inject relay auth token. |
 | `packages/app-lib/build.rs` | **MODIFIED** | Cargo compile-time script | Added default fallbacks for `MODRINTH_*` and `MODBRIDGE_*` environment variables so crates compile without requiring a `.env` file. |
-| `apps/app/src/api/auth.rs` | **MODIFIED** | Tauri IPC commands for auth | Registered `add_offline_user` command handler; updated auth window title to "Sign into Modbridge". |
-| `apps/app/tauri.conf.json` | **MODIFIED** | Tauri desktop configuration | Updated `productName`, `mainBinaryName`, and window title to "Modbridge"; updated CSP `connect-src` to permit `*.neon.tech`. |
-| `apps/app/tauri-release.conf.json` | **MODIFIED** | Tauri release updater config | Pointed updater endpoint to Modbridge update function. |
+| `apps/app/src/api/auth.rs` | **MODIFIED** | Tauri IPC commands for auth | Registered `add_offline_user` command handler; updated auth window title to "Sign into ModBridge". |
+| `apps/app/tauri.conf.json` | **MODIFIED** | Tauri desktop configuration | Updated `productName`, `mainBinaryName`, `identifier`, and window title to "ModBridge"; registered isolated `modbridge://` scheme; updated CSP `connect-src` to permit `*.neon.tech`. |
+| `apps/app/tauri-release.conf.json` | **MODIFIED** | Tauri release updater config | Pointed updater endpoint to ModBridge update function. |
+| `packages/app-lib/src/state/dirs.rs` | **MODIFIED** | Directory paths | Added `MODBRIDGE_CONFIG_DIR` support and isolated `%APPDATA%\ModBridge` path resolution for side-by-side coexistence with Modrinth. |
+| `packages/app-lib/src/api/handler.rs` | **MODIFIED** | External command & protocol handler | Added support for `modbridge://` deep-link URL scheme with fallback to `modrinth://`. |
 | `apps/app-frontend/src/config.ts` | **MODIFIED** | Frontend endpoint config | Added `relayBaseUrl` support and routed `labrinthBaseUrl` through `<relay>/api`. |
 | `apps/app-frontend/src/helpers/auth.js` | **MODIFIED** | Frontend auth invoke bridge | Added `add_offline_user(username, pin)` wrapper. |
 | `apps/app-frontend/src/components/ui/AccountsCard.vue` | **MODIFIED** | Account switcher UI | Added Offline Identity creation form (Username + PIN); added "Offline" / "Microsoft" badges; defaulted to offline on fresh install. |
-| `apps/app-frontend/src/App.vue` | **MODIFIED** | Main frontend layout | Routed critical announcement & news requests through config; updated update notification text to "Modbridge". |
+| `apps/app-frontend/src/App.vue` | **MODIFIED** | Main frontend layout | Routed critical announcement & news requests through config; updated top bar branding to ModBridge wordmark; updated update notification text to "ModBridge". |
 | `apps/app-frontend/src/components/ui/SurveyPopup.vue` | **MODIFIED** | Survey popup UI | Replaced hardcoded `api.modrinth.com` URL with `config.labrinthBaseUrl`. |
-| `apps/app-frontend/src/components/ui/ErrorModal.vue` | **MODIFIED** | Error modal UI | Updated error title from "Modrinth App" to "Modbridge". |
+| `apps/app-frontend/src/components/ui/ErrorModal.vue` | **MODIFIED** | Error modal UI | Updated error title from "Modrinth App" to "ModBridge". |
 | `pnpm-workspace.yaml` | **MODIFIED** | Workspace manifest | Added `'modbridge-functions'` to monorepo package list. |
 
 ---

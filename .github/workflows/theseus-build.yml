@@ -73,9 +73,9 @@ jobs:
           GIT_HASH=$(git rev-parse --short HEAD)
           cat > apps/app/tauri-dev.conf.json <<EOF
           {
-            "productName": "Modbridge (dev-${GIT_HASH})",
-            "mainBinaryName": "Modbridge (dev-${GIT_HASH})",
-            "identifier": "Modbridge-dev-${GIT_HASH}",
+            "productName": "ModBridge (dev-${GIT_HASH})",
+            "mainBinaryName": "ModBridge (dev-${GIT_HASH})",
+            "identifier": "ModBridge-dev-${GIT_HASH}",
             "bundle": {
               "fileAssociations": []
             }
@@ -156,6 +156,7 @@ jobs:
       - name: Upload app bundles
         uses: actions/upload-artifact@v4
         with:
-          name: Modbridge-Windows-Installer
+          name: ModBridge-Windows-Installer
           path: |
-            target/release/bundle/nsis/Modbridge*
+            target/release/bundle/nsis/ModBridge*
+            apps/app/src-tauri/target/release/bundle/nsis/ModBridge*

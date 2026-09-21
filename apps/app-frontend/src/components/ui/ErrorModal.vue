@@ -88,7 +88,7 @@ defineExpose({
 			supportLink.value = 'https://support.modrinth.com'
 			metadata.value.instanceId = context.instanceId
 		} else if (source === 'state_init') {
-			title.value = 'Error initializing Modbridge'
+			title.value = 'Error initializing ModBridge'
 			errorType.value = 'state_init'
 			supportLink.value = 'https://support.modrinth.com'
 		} else {

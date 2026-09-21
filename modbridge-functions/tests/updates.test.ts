@@ -41,21 +41,21 @@ describe('Updates & Versioning', () => {
 		it('builds a valid Tauri v2 updater manifest', () => {
 			const mockRelease = {
 				tag_name: 'v1.0.5',
-				name: 'Modbridge 1.0.5',
+				name: 'ModBridge 1.0.5',
 				body: 'Release notes for 1.0.5',
 				draft: false,
 				prerelease: false,
 				published_at: '2026-09-21T00:00:00Z',
 				assets: [
 					{
-						name: 'Modbridge-1.0.5-windows-x86_64.msi.zip',
-						browser_download_url: 'https://github.com/ethantphillips/ModBridge/releases/download/v1.0.5/Modbridge-1.0.5-windows-x86_64.msi.zip',
+						name: 'ModBridge-1.0.5-windows-x86_64.msi.zip',
+						browser_download_url: 'https://github.com/ethantphillips/ModBridge/releases/download/v1.0.5/ModBridge-1.0.5-windows-x86_64.msi.zip',
 						size: 80000000,
 						content_type: 'application/zip',
 					},
 					{
-						name: 'Modbridge-1.0.5-linux-x86_64.AppImage.tar.gz',
-						browser_download_url: 'https://github.com/ethantphillips/ModBridge/releases/download/v1.0.5/Modbridge-1.0.5-linux-x86_64.AppImage.tar.gz',
+						name: 'ModBridge-1.0.5-linux-x86_64.AppImage.tar.gz',
+						browser_download_url: 'https://github.com/ethantphillips/ModBridge/releases/download/v1.0.5/ModBridge-1.0.5-linux-x86_64.AppImage.tar.gz',
 						size: 90000000,
 						content_type: 'application/gzip',
 					},

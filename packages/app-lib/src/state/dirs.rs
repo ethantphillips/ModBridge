@@ -34,11 +34,12 @@ impl DirectoryInfo {
     // Get the settings directory
     // init() is not needed for this function
     pub fn initial_settings_dir_path(app_identifier: &str) -> Option<PathBuf> {
-        Self::env_path("THESEUS_CONFIG_DIR")
+        Self::env_path("MODBRIDGE_CONFIG_DIR")
+            .or_else(|| Self::env_path("THESEUS_CONFIG_DIR"))
             .or_else(|| Some(dirs::data_dir()?.join(app_identifier)))
     }
 
-    /// Get all paths needed for Theseus to operate properly
+    /// Get all paths needed for ModBridge to operate properly
     #[tracing::instrument]
     pub async fn init(
         config_dir: Option<String>,
@@ -51,7 +52,7 @@ impl DirectoryInfo {
 
         fs::create_dir_all(&settings_dir).await.map_err(|err| {
             crate::ErrorKind::FSError(format!(
-                "Error creating Theseus config directory: {err}"
+                "Error creating ModBridge config directory: {err}"
             ))
         })?;
 

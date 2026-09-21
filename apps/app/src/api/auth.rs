@@ -51,7 +51,7 @@ pub async fn login<R: Runtime>(
             },
         )?),
     )
-    .title("Sign into Modbridge")
+    .title("Sign into ModBridge")
     .always_on_top(true)
     .min_inner_size(500.0, 500.0)
     .inner_size(1000.0, 700.0)

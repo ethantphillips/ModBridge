@@ -1,6 +1,6 @@
-# Building Modbridge
+# Building ModBridge
 
-Instructions for building, running, and releasing the Modbridge launcher.
+Instructions for building, running, and releasing the ModBridge launcher.
 
 ## 1. Quick Start (Development Mode)
 
@@ -21,13 +21,13 @@ pnpm app:build
 
 ### Build Artifact Locations
 When compilation finishes, Tauri outputs binaries to:
-- **Windows (NSIS Installer):** `apps/app/src-tauri/target/release/bundle/nsis/Modbridge_<version>_x64-setup.exe`
+- **Windows (NSIS Installer):** `apps/app/src-tauri/target/release/bundle/nsis/ModBridge_<version>_x64-setup.exe`
 - **Linux (AppImage / DEB):** `target/release/bundle/appimage/` and `target/release/bundle/deb/`
 - **macOS (DMG):** `target/universal-apple-darwin/release/bundle/dmg/`
 
 ## 3. Automated Builds via GitHub Actions
 
-Every push to the `main` branch of `ethantphillips/ModBridge` triggers the **`Modbridge App build`** workflow.
+Every push to the `main` branch of `ethantphillips/ModBridge` triggers the **`ModBridge App build`** workflow.
 
 - Builds across **Windows**, **macOS**, and **Linux** using standard GitHub-hosted runners.
 - Output installer artifacts are uploaded to the GitHub Actions run summary for immediate download.

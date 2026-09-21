@@ -26,7 +26,7 @@ export default {
 		if (url.pathname === '/' || url.pathname === '/health') {
 			return new Response(
 				JSON.stringify({
-					service: 'Modbridge Relay',
+					service: 'ModBridge Relay',
 					status: 'ok',
 					version: '1.0.0',
 				}),
@@ -64,7 +64,7 @@ export default {
 			})
 			return createErrorResponse(
 				404,
-				`Route '${url.pathname}' is not supported by Modbridge Relay. Only allowlisted Modrinth and Minecraft endpoints are proxied.`,
+				`Route '${url.pathname}' is not supported by ModBridge Relay. Only allowlisted Modrinth and Minecraft endpoints are proxied.`,
 				'NOT_FOUND',
 			)
 		}

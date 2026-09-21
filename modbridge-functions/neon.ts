@@ -4,11 +4,11 @@ export default defineConfig({
 	preview: {
 		functions: {
 			relay: {
-				name: 'Modbridge Relay',
+				name: 'ModBridge Relay',
 				source: './src/relay/index.ts',
 			},
 			updates: {
-				name: 'Modbridge Updates',
+				name: 'ModBridge Updates',
 				source: './src/updates/index.ts',
 			},
 		},

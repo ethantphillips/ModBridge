@@ -25,7 +25,7 @@ export default {
 		if (pathname === '/' || pathname === '/health') {
 			return new Response(
 				JSON.stringify({
-					service: 'Modbridge Updates',
+					service: 'ModBridge Updates',
 					status: 'ok',
 					repository: 'ethantphillips/ModBridge',
 				}),
@@ -46,7 +46,7 @@ export default {
 			try {
 				const release = await fetchLatestRelease(includePrerelease)
 				if (!release) {
-					return createErrorResponse(404, 'No releases found for Modbridge', 'NO_RELEASES')
+					return createErrorResponse(404, 'No releases found for ModBridge', 'NO_RELEASES')
 				}
 
 				const manifest = buildUpdateManifest(release, updateOrigin)
@@ -156,6 +156,6 @@ export default {
 			}
 		}
 
-		return createErrorResponse(404, `Route '${pathname}' not found on Modbridge Update Function`, 'NOT_FOUND')
+		return createErrorResponse(404, `Route '${pathname}' not found on ModBridge Update Function`, 'NOT_FOUND')
 	},
 }

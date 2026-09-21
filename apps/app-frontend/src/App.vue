@@ -54,7 +54,6 @@ import {
 	providePageContext,
 	providePopupNotificationManager,
 	TeleportOverflowMenu,
-	TextLogo,
 	TooltipDirective,
 	useDebugLogger,
 	useFormatBytes,
@@ -1816,16 +1815,16 @@ const updatePopupMessages = defineMessages({
 	},
 	meteredBody: {
 		id: 'app.update-popup.body.metered',
-		defaultMessage: `Modbridge v{version} is available now! Since you're on a metered network, we didn't automatically download it.`,
+		defaultMessage: `ModBridge v{version} is available now! Since you're on a metered network, we didn't automatically download it.`,
 	},
 	downloadedBody: {
 		id: 'app.update-popup.body.download-complete',
-		defaultMessage: `Modbridge v{version} has finished downloading. Reload to update now, or automatically when you close Modbridge.`,
+		defaultMessage: `ModBridge v{version} has finished downloading. Reload to update now, or automatically when you close ModBridge.`,
 	},
 	linuxBody: {
 		id: 'app.update-popup.body.linux',
 		defaultMessage:
-			'Modbridge v{version} is available. Use your package manager to update for the latest features and fixes!',
+			'ModBridge v{version} is available. Use your package manager to update for the latest features and fixes!',
 	},
 	reload: {
 		id: 'app.update-popup.reload',
@@ -2373,7 +2372,7 @@ provideAppUpdateDownloadProgress(appUpdateDownload)
 		</div>
 		<div data-tauri-drag-region class="app-grid-statusbar bg-bg-raised h-[--top-bar-height] flex">
 			<div data-tauri-drag-region class="flex min-w-0 flex-1 items-center overflow-hidden p-2">
-				<TextLogo class="h-7 w-auto shrink-0 text-contrast pointer-events-none" />
+				<span class="text-xl font-bold tracking-tight text-contrast pointer-events-none select-none px-1">Mod<span class="text-brand">Bridge</span></span>
 				<div data-tauri-drag-region class="ml-2 flex shrink-0 items-center gap-2">
 					<IconButton
 						type="outlined"

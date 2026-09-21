@@ -29,7 +29,7 @@ export interface GitHubRelease {
 export async function fetchGitHubReleases(): Promise<GitHubRelease[]> {
 	const headers: Record<string, string> = {
 		Accept: 'application/vnd.github.v3+json',
-		'User-Agent': 'Modbridge-Update-Function/1.0.0',
+		'User-Agent': 'ModBridge-Update-Function/1.0.0',
 	}
 
 	// Optional GitHub token for higher rate limits if configured

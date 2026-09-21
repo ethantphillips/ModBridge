@@ -55,14 +55,14 @@
 			}
 		]
 	},
-	"productName": "Modbridge",
+	"productName": "ModBridge",
 	"version": "../app-frontend/package.json",
-	"mainBinaryName": "Modbridge",
-	"identifier": "ModrinthApp",
+	"mainBinaryName": "ModBridge",
+	"identifier": "ModBridge",
 	"plugins": {
 		"deep-link": {
 			"desktop": {
-				"schemes": ["modrinth"]
+				"schemes": ["modbridge"]
 			},
 			"mobile": []
 		}
@@ -77,7 +77,7 @@
 				"fullscreen": false,
 				"height": 800,
 				"resizable": true,
-				"title": "Modbridge",
+				"title": "ModBridge",
 				"label": "main",
 				"width": 1280,
 				"minHeight": 700,

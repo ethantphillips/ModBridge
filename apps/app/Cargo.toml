@@ -3,7 +3,7 @@ name = "theseus_gui"
 # The actual version is set by the theseus-build workflow on tagging
 version = "1.0.0-local"
 edition.workspace = true
-description = "The Modrinth App is a desktop application for managing your Minecraft mods"
+description = "ModBridge is an offline-first desktop application for Minecraft"
 repository = "https://github.com/modrinth/code/apps/app/"
 license = "GPL-3.0-only"
 
