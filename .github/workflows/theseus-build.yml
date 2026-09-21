@@ -34,6 +34,7 @@ jobs:
       RUSTC_WRAPPER: sccache
       SCCACHE_GHA_ENABLED: 'true'
       MODBRIDGE_RELAY_BASE_URL: https://br-mute-sun-avpguohr-relay.compute.c-11.us-east-1.aws.neon.tech
+      XWIN_ACCEPT_TOS: 'true'
 
     steps:
       - name: Check out code
@@ -50,7 +51,7 @@ jobs:
       - name: Setup Rust toolchain
         uses: actions-rust-lang/setup-rust-toolchain@v1
         with:
-          targets: x86_64-pc-windows-msvc
+          target: x86_64-pc-windows-msvc
           rustflags: ''
           cache: false
 
@@ -92,10 +93,9 @@ jobs:
           EOF
 
       - name: Setup Dasel
-        uses: jaxxstorm/action-install-gh-release@v3.0.0
-        with:
-          repo: TomWright/dasel
-          tag: v2.8.1
+        run: |
+          sudo curl -sSLf https://github.com/TomWright/dasel/releases/download/v2.8.1/dasel_linux_amd64 -o /usr/local/bin/dasel
+          sudo chmod +x /usr/local/bin/dasel
 
       - name: Install dependencies
         run: pnpm install --no-frozen-lockfile
