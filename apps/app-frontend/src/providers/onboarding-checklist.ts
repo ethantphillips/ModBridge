@@ -28,7 +28,7 @@ export function setupOnboardingChecklistProvider(
 	const context: OnboardingChecklistContext = {
 		hasCreatedInstance: computed(() => checklist.value?.has_created_instance ?? false),
 		hasLoggedIntoMinecraft: computed(() => checklist.value?.has_logged_into_minecraft ?? false),
-		hasLoggedIntoModrinth: computed(() => checklist.value?.has_logged_into_modrinth ?? false),
+		hasLoggedIntoModrinth: computed(() => true),
 		isReady: computed(() => checklist.value !== undefined),
 		showChecklist: computed(() => checklist.value?.show_checklist ?? false),
 	}

@@ -1,10 +1,12 @@
 <script setup lang="ts">
-import { ImportIcon, PlusIcon } from '@modrinth/assets'
+import { CompassIcon, ImportIcon, PlusIcon } from '@modrinth/assets'
 import { Button, defineMessages, IntlFormatted, useVIntl } from '@modrinth/ui'
 import { inject, onMounted, onUnmounted, ref } from 'vue'
+import { useRouter } from 'vue-router'
 
 import modrinthSocialIcon from '../../assets/welcome/modrinth-social-icon.png'
 
+const router = useRouter()
 const showCreationModal = inject<() => void>('showCreationModal')
 const showImportModal = inject<() => void>('showImportModal')
 
@@ -22,6 +24,10 @@ const messages = defineMessages({
 	createInstance: {
 		id: 'app.welcome-screen.create-instance',
 		defaultMessage: 'Create an instance',
+	},
+	browseModpacks: {
+		id: 'app.welcome-screen.browse-modpacks',
+		defaultMessage: 'Browse & download modpacks',
 	},
 	quickCreateHint: {
 		id: 'app.welcome-screen.quick-create-hint',
@@ -99,12 +105,22 @@ onUnmounted(() => {
 						{{ formatMessage(messages.welcomeDescription) }}
 					</p>
 				</div>
-				<div class="flex w-72 flex-col items-center gap-4">
+				<div class="flex w-72 flex-col items-center gap-3">
 					<Button
 						type="colored"
 						color="brand"
 						size="lg"
-						class="!shadow-none"
+						class="w-full justify-center !shadow-none"
+						:disabled="offline"
+						@click="router.push('/browse/modpack')"
+					>
+						<CompassIcon />
+						{{ formatMessage(messages.browseModpacks) }}
+					</Button>
+					<Button
+						type="outlined"
+						size="lg"
+						class="w-full justify-center !shadow-none"
 						:disabled="offline"
 						@click="showCreationModal?.()"
 					>

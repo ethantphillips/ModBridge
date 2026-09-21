@@ -17,7 +17,6 @@ import {
 	ImageIcon,
 	LogInIcon,
 	LogOutIcon,
-	NewspaperIcon,
 	PlayIcon,
 	PlusIcon,
 	RefreshCwIcon,
@@ -45,7 +44,6 @@ import {
 	I18nDebugPanel,
 	IconButton,
 	LoadingBar,
-	NewsArticleCard,
 	NotificationPanel,
 	PopupNotificationPanel,
 	provideModalBehavior,
@@ -88,12 +86,10 @@ import MinecraftRequiredModal from '@/components/ui/minecraft-required-modal/Min
 import AppSettingsModal from '@/components/ui/modal/AppSettingsModal.vue'
 import InstallToPlayModal from '@/components/ui/modal/InstallToPlayModal.vue'
 import ModpackAlreadyInstalledModal from '@/components/ui/modal/ModpackAlreadyInstalledModal.vue'
-import ModrinthAccountRequiredModal from '@/components/ui/modal/ModrinthAccountRequiredModal.vue'
 import UpdateToPlayModal from '@/components/ui/modal/UpdateToPlayModal.vue'
 import NavButton from '@/components/ui/NavButton.vue'
 import OnboardingChecklist from '@/components/ui/onboarding-checklist/index.vue'
 import PrideFundraiserBanner from '@/components/ui/PrideFundraiserBanner.vue'
-import PromotionWrapper from '@/components/ui/PromotionWrapper.vue'
 import QuickInstanceSwitcher from '@/components/ui/QuickInstanceSwitcher.vue'
 import SharedInstanceInviteHandler from '@/components/ui/shared-instances/shared-instance-invite-handler/index.vue'
 import SplashScreen from '@/components/ui/SplashScreen.vue'
@@ -113,15 +109,6 @@ import { useQuickInstanceLimit } from '@/composables/use-quick-instance-limit.ts
 import { isDarkTheme, useTheme } from '@/composables/use-theme.ts'
 import { config } from '@/config'
 import { getAccountAppearance, rememberAccountAppearance } from '@/helpers/account-appearance.ts'
-import {
-	hide_ads_window,
-	init_ads_window,
-	perform_ads_consent_action,
-	release_ads_window_hold,
-	should_show_ads_consent_popup,
-	take_ads_window_hold,
-} from '@/helpers/ads.js'
-import { debugAnalytics, initAnalytics, trackEvent } from '@/helpers/analytics'
 import { check_reachable } from '@/helpers/auth.js'
 import { get_user, get_user_many, get_version } from '@/helpers/cache.js'
 import { gameSettingsQueryOptions } from '@/helpers/game-options'
@@ -227,24 +214,8 @@ function updateHistoryNavigationState() {
 	canNavigateForward.value = historyState?.forward != null
 }
 
-let fullscreenAdsWindowHold = false
+function handleFullscreenChange() {}
 
-async function handleFullscreenChange() {
-	const fullscreen = document.fullscreenElement !== null
-	if (fullscreen === fullscreenAdsWindowHold) return
-
-	fullscreenAdsWindowHold = fullscreen
-	try {
-		if (fullscreen) {
-			await take_ads_window_hold()
-		} else {
-			await release_ads_window_hold()
-		}
-	} catch (error) {
-		fullscreenAdsWindowHold = !fullscreen
-		handleError(error)
-	}
-}
 
 updateHistoryNavigationState()
 
@@ -317,8 +288,6 @@ useAppEvent(
 const popupNotificationManager = new AppPopupNotificationManager()
 providePopupNotificationManager(popupNotificationManager)
 const { addPopupNotification } = popupNotificationManager
-let adsConsentPopupId = null
-useAppEvent('ads_consent_required', handleAdsConsentRequired, appEvents)
 
 const appVersion = getVersion()
 const tauriApiClient = new TauriModrinthClient({
@@ -359,16 +328,9 @@ useQuery({
 	refetchOnWindowFocus: false,
 	refetchOnReconnect: false,
 })
-const hasPlus = computed(
-	() =>
-		!!credentials.value?.user &&
-		(hasMidasBadge(credentials.value.user) ||
-			hasActivePride26Midas(authenticatedModrinthUser.value?.campaigns?.pride_26)),
-)
-const showAd = computed(
-	() => sidebarVisible.value && !hasPlus.value && credentials.value !== undefined,
-)
-const adConsentAvailable = computed(() => credentials.value !== undefined && !hasPlus.value)
+const hasPlus = computed(() => false)
+const showAd = computed(() => false)
+const adConsentAvailable = computed(() => false)
 providePageContext({
 	hierarchicalSidebarAvailable: ref(true),
 	showAds: showAd,
@@ -545,11 +507,6 @@ onMounted(async () => {
 	}
 
 	await useCheckDisableMouseover()
-	try {
-		handleAdsConsentRequired(await should_show_ads_consent_popup())
-	} catch (error) {
-		handleError(error)
-	}
 
 	document.querySelector('body').addEventListener('click', handleClick)
 	document.querySelector('body').addEventListener('auxclick', handleAuxClick)
@@ -567,10 +524,6 @@ onUnmounted(async () => {
 	unlistenEditMenu?.()
 	clearDelayedUpdatePopup()
 
-	if (fullscreenAdsWindowHold) {
-		fullscreenAdsWindowHold = false
-		await release_ads_window_hold().catch(handleError)
-	}
 	await unlistenUpdateDownload?.()
 })
 
@@ -711,55 +664,6 @@ const messages = defineMessages({
 	},
 })
 
-function handleAdsConsentRequired(required) {
-	if (!required) {
-		if (adsConsentPopupId !== null) {
-			popupNotificationManager.removeNotification(adsConsentPopupId)
-			adsConsentPopupId = null
-		}
-		return
-	}
-
-	if (
-		adsConsentPopupId !== null &&
-		popupNotificationManager.getNotifications().some((item) => item.id === adsConsentPopupId)
-	) {
-		return
-	}
-
-	const notification = addPopupNotification({
-		contentType: 'standard',
-		title: formatMessage(messages.adsConsentTitle),
-		text: formatMessage(messages.adsConsentBody),
-		type: 'info',
-		hideIcon: true,
-		autoCloseMs: null,
-		dismissible: false,
-		buttons: [
-			{
-				label: formatMessage(messages.adsConsentManage),
-				action: () => perform_ads_consent_action('manage').catch(handleError),
-				color: 'standard',
-				keepOpen: true,
-			},
-			{
-				label: formatMessage(messages.adsConsentReject),
-				action: () => perform_ads_consent_action('reject').catch(handleError),
-				color: 'brand',
-				keepOpen: true,
-			},
-			{
-				label: formatMessage(messages.adsConsentAccept),
-				action: () => perform_ads_consent_action('accept').catch(handleError),
-				color: 'brand',
-				keepOpen: true,
-			},
-		],
-	})
-
-	adsConsentPopupId = notification.id
-}
-
 async function setupApp() {
 	tags.initialize()
 	await traceStartupStep('Initialize onboarding checklist', () => onboardingChecklist.initialize())
@@ -846,12 +750,6 @@ async function setupApp() {
 		}),
 	)
 
-	if (telemetry) {
-		initAnalytics()
-		if (dev) debugAnalytics()
-		trackEvent('Launched', { version, dev })
-	}
-
 	const osType = await traceStartupStep('Read operating system type', async () => type())
 	if (osType === 'macos') {
 		document.getElementsByTagName('html')[0].classList.add('mac')
@@ -870,22 +768,6 @@ async function setupApp() {
 			console.log(
 				`No critical announcement found at ${config.labrinthBaseUrl}/appCriticalAnnouncement.json?version=${version}`,
 			)
-		})
-
-	fetch(`${config.siteUrl}/news/feed/articles.json`)
-		.then((response) => response.json())
-		.then((res) => {
-			if (res && res.articles) {
-				news.value = res.articles
-					.map((article) => ({
-						...article,
-						path: article.link,
-					}))
-					.slice(0, 4)
-			}
-		})
-		.catch((error) => {
-			console.error('Failed to fetch news articles', error)
 		})
 
 	traceStartupStep('Read opening command', get_opening_command).then(handleCommand)
@@ -1596,23 +1478,6 @@ async function fetchIntercomToken() {
 	return await response.json()
 }
 
-watch(
-	[stateInitialized, showAd, adConsentAvailable],
-	async ([ready, showAds, canManageConsent]) => {
-		if (!ready) return
-
-		if (showAds) {
-			await init_ads_window(true)
-			return
-		}
-
-		await hide_ads_window(true)
-		if (canManageConsent) {
-			await init_ads_window()
-		}
-	},
-	{ immediate: true },
-)
 
 onMounted(() => {
 	invoke('show_window')
@@ -2215,9 +2080,6 @@ provideAppUpdateDownloadProgress(appUpdateDownload)
 		</Transition>
 		<AppSettingsModal ref="appSettingsModal" />
 		<SyncInstancesUpdateModal ref="syncInstancesUpdateModal" />
-		<Suspense>
-			<ModrinthAccountRequiredModal ref="modrinthLoginModal" :request-auth="requestModrinthAuth" />
-		</Suspense>
 		<CreationFlowModal
 			ref="installationModal"
 			type="instance"
@@ -2304,70 +2166,6 @@ provideAppUpdateDownloadProgress(appUpdateDownload)
 				:to="() => appSettingsModal?.show()"
 			>
 				<SettingsIcon />
-			</NavButton>
-			<IconButton
-				v-if="credentials === undefined"
-				v-tooltip.right="profileButtonTooltip"
-				type="quiet"
-				size="xl"
-				disabled
-				class="pointer-events-none"
-				:label="formatMessage(messages.loadingProfile)"
-			>
-				<SpinnerIcon class="animate-spin" />
-			</IconButton>
-			<TeleportOverflowMenu
-				v-else-if="credentials?.user"
-				v-tooltip.right="profileButtonTooltip"
-				type="quiet"
-				size="xl"
-				:label="formatMessage(messages.modrinthAccount)"
-				:options="modrinthAccountMenuOptions"
-				placement="right-end"
-				:distance="4"
-				class="brightness-100 hover:!brightness-100 focus-visible:!brightness-100"
-			>
-				<Avatar
-					:src="credentials?.user?.avatar_url"
-					alt=""
-					size="32px"
-					circle
-					no-shadow
-					class="pointer-events-none !size-8"
-				/>
-				<template
-					v-for="account in accountSwitcherAccounts"
-					:key="account.user_id"
-					#[account.optionId]
-				>
-					<Avatar :src="account.user.avatar_url" size="1.25rem" aria-hidden="true" circle />
-					{{ account.user.username }}
-					<UserRoleIcon :role="account.user.role" />
-				</template>
-			</TeleportOverflowMenu>
-			<TeleportOverflowMenu
-				v-else-if="accountSwitcherAccounts.length > 0"
-				v-tooltip.right="profileButtonTooltip"
-				type="quiet"
-				size="xl"
-				:label="formatMessage(messages.signInToModrinthAccount)"
-				:options="accountSwitcherOptions"
-				placement="right-end"
-				:distance="4"
-			>
-				<LogInIcon class="!text-brand" />
-				<template
-					v-for="account in accountSwitcherAccounts"
-					:key="account.user_id"
-					#[account.optionId]
-				>
-					<Avatar :src="account.user.avatar_url" size="1.25rem" aria-hidden="true" circle />
-					{{ account.user.username }}
-					<UserRoleIcon :role="account.user.role" />
-				</template>
-			</TeleportOverflowMenu>
-			<NavButton v-else v-tooltip.right="profileButtonTooltip" :to="() => requestSignIn()">
-				<LogInIcon class="text-brand" />
 			</NavButton>
 		</div>
 		<div data-tauri-drag-region class="app-grid-statusbar bg-bg-raised h-[--top-bar-height] flex">
@@ -2495,7 +2293,6 @@ provideAppUpdateDownloadProgress(appUpdateDownload)
 				<OnboardingChecklist
 					@create-instance="installationModal?.show()"
 					@login-minecraft="accounts?.login()"
-					@login-modrinth="signIn"
 				/>
 				<div id="sidebar-teleport-target" class="sidebar-teleport-content"></div>
 				<div class="sidebar-default-content" :class="{ 'sidebar-enabled': sidebarVisible }">
@@ -2510,58 +2307,12 @@ provideAppUpdateDownloadProgress(appUpdateDownload)
 							<AccountsCard ref="accounts" />
 						</suspense>
 					</div>
-					<div
-						v-show="showFriendsList"
-						class="p-4 border-0 border-b-[1px] border-[--brand-gradient-border] border-solid"
-					>
-						<suspense>
-							<FriendsList
-								ref="friendsList"
-								:credentials="credentials"
-								:sign-in="() => requestSignIn()"
-							/>
-						</suspense>
-					</div>
 					<PrideFundraiserBanner
 						v-if="prideFundraiserEnabled"
 						class="p-4 border-0 border-b-[1px] border-[--brand-gradient-border] border-solid"
 					/>
-					<div v-if="news && news.length > 0" class="p-4 flex flex-col items-center">
-						<h3 class="text-base mb-4 text-primary font-medium m-0 text-left w-full">
-							{{ formatMessage(messages.news) }}
-						</h3>
-						<div class="space-y-4 flex flex-col items-center w-full">
-							<NewsArticleCard
-								v-for="(item, index) in news"
-								:key="`news-${index}`"
-								:article="item"
-							/>
-							<ButtonLink
-								type="colored"
-								color="brand"
-								size="xl"
-								href="https://modrinth.com/news"
-								target="_blank"
-								class="my-4"
-							>
-								<NewspaperIcon />
-								{{ formatMessage(messages.viewAllNews) }}
-							</ButtonLink>
-						</div>
-					</div>
 				</div>
 			</div>
-			<template v-if="showAd">
-				<a
-					href="https://modrinth.plus?app"
-					class="absolute bottom-[250px] w-full flex justify-center items-center gap-1 px-4 py-3 text-purple font-medium hover:underline z-10"
-					target="_blank"
-				>
-					<ArrowBigUpDashIcon class="text-2xl" />
-					{{ formatMessage(messages.upgradeToModrinthPlus) }}
-				</a>
-				<PromotionWrapper />
-			</template>
 		</div>
 	</div>
 	<I18nDebugPanel />
