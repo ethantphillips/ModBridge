@@ -322,8 +322,8 @@ opt-level = 3
 opt-level = "s"  # Optimize for binary size
 strip = true  # Remove debug symbols
 lto = "thin"  # Enables ThinLTO for fast multi-threaded linking and codegen
-codegen-units = 16  # Maximize parallel code generation across all CPU cores
 panic = "abort"  # Strip expensive panic clean-up logic
+codegen-units = 16  # Maximize parallel code generation across all CPU cores
 
 [profile.test]
 inherits = "dev"
