@@ -7,18 +7,12 @@ on:
       - 'v*'
   workflow_dispatch:
     inputs:
-      sign-windows-binaries:
-        description: Sign Windows binaries
-        type: boolean
-        default: false
-        required: false
       environment:
         description: Environment
         type: choice
         options:
           - prod
           - staging
-          - prod-with-staging-archon
         default: prod
         required: false
       app-version-override:
@@ -32,21 +26,14 @@ concurrency:
 
 jobs:
   build:
-    name: Build (Windows)
+    name: Build Windows (on Ubuntu)
+    runs-on: ubuntu-latest
     env:
       VITE_STRIPE_PUBLISHABLE_KEY: pk_live_51JbFxJJygY5LJFfKLVVldb10HlLt24p421OWRsTOWc5sXYFOnFUXWieSc6HD3PHo25ktx8db1WcHr36XGFvZFVUz00V9ixrCs5
       CARGO_BUILD_JOBS: 4
       RUSTC_WRAPPER: sccache
       SCCACHE_GHA_ENABLED: 'true'
-    strategy:
-      fail-fast: false
-      matrix:
-        platform: [windows-latest]
-        include:
-          - platform: windows-latest
-            artifact-target-name: x86_64-pc-windows-msvc
-
-    runs-on: ${{ matrix.platform }}
+      MODBRIDGE_RELAY_BASE_URL: https://br-mute-sun-avpguohr-relay.compute.c-11.us-east-1.aws.neon.tech
 
     steps:
       - name: Check out code
@@ -54,9 +41,16 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Install cross-compilation dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y nsis lld llvm clang
+          pipx install cargo-xwin
+
       - name: Setup Rust toolchain
         uses: actions-rust-lang/setup-rust-toolchain@v1
         with:
+          targets: x86_64-pc-windows-msvc
           rustflags: ''
           cache: false
 
@@ -69,6 +63,12 @@ jobs:
           cache-targets: false
           save-if: ${{ github.ref == 'refs/heads/main' }}
 
+      - name: Cache xwin SDK
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/xwin
+          key: xwin-sdk-v1
+
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
@@ -78,7 +78,6 @@ jobs:
         run: corepack enable
 
       - name: Generate tauri-dev.conf.json
-        shell: bash
         run: |
           GIT_HASH=$(git rev-parse --short HEAD)
           cat > apps/app/tauri-dev.conf.json <<EOF
@@ -92,21 +91,11 @@ jobs:
           }
           EOF
 
-      - name: Setup Java
-        if: env.DIGICERT_ONE_SIGNER_CLIENT_CERTIFICATE_BASE64 != '' && (startsWith(github.ref, 'refs/tags/v') || inputs.sign-windows-binaries == true)
-        uses: actions/setup-java@v4
-        with:
-          distribution: temurin
-          java-version: 17
-
       - name: Setup Dasel
         uses: jaxxstorm/action-install-gh-release@v3.0.0
         with:
           repo: TomWright/dasel
           tag: v2.8.1
-          extension-matching: disable
-          rename-to: dasel.exe
-          chmod: 0755
 
       - name: Install dependencies
         run: pnpm install --no-frozen-lockfile
@@ -115,7 +104,6 @@ jobs:
         run: pnpm turbo run build --filter=@modrinth/app-frontend
 
       - name: Set application version and environment
-        shell: bash
         run: |
           APP_VERSION="${{ inputs.app-version-override }}"
           if [ -z "$APP_VERSION" ]; then
@@ -138,40 +126,37 @@ jobs:
           fi
 
       - name: Configure signing and updater
-        shell: pwsh
         run: |
-          if (-not $env:DIGICERT_ONE_SIGNER_CLIENT_CERTIFICATE_BASE64 -or '${{ startsWith(github.ref, 'refs/tags/v') || inputs.sign-windows-binaries }}' -ne 'true') {
-            dasel.exe delete -f apps/app/tauri-release.conf.json 'bundle.windows.signCommand' 2>$null
-          }
-          if (-not $env:TAURI_SIGNING_PRIVATE_KEY) {
-            dasel.exe delete -f apps/app/tauri-release.conf.json 'bundle.createUpdaterArtifacts' 2>$null
-          }
+          dasel delete -f apps/app/tauri-release.conf.json 'bundle.windows.signCommand' 2>/dev/null || true
+          if [ -z "$TAURI_SIGNING_PRIVATE_KEY" ]; then
+            dasel delete -f apps/app/tauri-release.conf.json 'bundle.createUpdaterArtifacts' 2>/dev/null || true
+          fi
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_PRIVATE_KEY }}
 
       - name: Build Windows app
-        shell: pwsh
         run: |
-          if ($env:DIGICERT_ONE_SIGNER_CLIENT_CERTIFICATE_BASE64 -and ('${{ startsWith(github.ref, 'refs/tags/v') || inputs.sign-windows-binaries }}' -eq 'true')) {
-            choco install jsign --ignore-dependencies
-            [System.Convert]::FromBase64String("$env:DIGICERT_ONE_SIGNER_CLIENT_CERTIFICATE_BASE64") | Set-Content -Path signer-client-cert.p12 -AsByteStream
-            $env:DIGICERT_ONE_SIGNER_CREDENTIALS = "$env:DIGICERT_ONE_SIGNER_API_KEY|$PWD\signer-client-cert.p12|$env:DIGICERT_ONE_SIGNER_CLIENT_CERTIFICATE_PASSWORD"
-            $env:JAVA_HOME = "$env:JAVA_HOME_17_X64"
-          }
-          $bundles = if ($env:TAURI_SIGNING_PRIVATE_KEY) { "nsis,updater" } else { "nsis" }
-          Write-Host "Building Tauri bundles: $bundles"
-          ${{ (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v') || inputs.app-version-override != '') && 'pnpm --filter=@modrinth/app run tauri build --config tauri-release.conf.json --verbose --bundles "$bundles"' || 'pnpm --filter=@modrinth/app run tauri build --config tauri-dev.conf.json --verbose --bundles "$bundles"' }}
-          Remove-Item -Path signer-client-cert.p12 -ErrorAction SilentlyContinue
+          BUNDLES="nsis"
+          if [ -n "$TAURI_SIGNING_PRIVATE_KEY" ]; then
+            BUNDLES="nsis,updater"
+          fi
+          echo "Building Tauri bundles: $BUNDLES"
+          pnpm --filter=@modrinth/app run tauri build \
+            --target x86_64-pc-windows-msvc \
+            --runner cargo-xwin \
+            --config tauri-release.conf.json \
+            --verbose \
+            --bundles "$BUNDLES"
           sccache --show-stats
         env:
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_KEY_PASSWORD }}
-          DIGICERT_ONE_SIGNER_API_KEY: ${{ secrets.DIGICERT_ONE_SIGNER_API_KEY }}
-          DIGICERT_ONE_SIGNER_CLIENT_CERTIFICATE_BASE64: ${{ secrets.DIGICERT_ONE_SIGNER_CLIENT_CERTIFICATE_BASE64 }}
-          DIGICERT_ONE_SIGNER_CLIENT_CERTIFICATE_PASSWORD: ${{ secrets.DIGICERT_ONE_SIGNER_CLIENT_CERTIFICATE_PASSWORD }}
 
       - name: Upload app bundles
         uses: actions/upload-artifact@v4
         with:
           name: ModBridge-Windows-Installer
           path: |
-            target/release/bundle/nsis/ModBridge*
-            apps/app/src-tauri/target/release/bundle/nsis/ModBridge*
+            target/x86_64-pc-windows-msvc/release/bundle/nsis/ModBridge*
+            target/**/bundle/nsis/ModBridge*
+            apps/app/src-tauri/**/bundle/nsis/ModBridge*

@@ -1,23 +1,17 @@
 const trimTrailingSlash = (url: string) => url.replace(/\/$/, '')
 
+const DEFAULT_RELAY_URL = 'https://br-mute-sun-avpguohr-relay.compute.c-11.us-east-1.aws.neon.tech'
+
 const relayBaseUrl = trimTrailingSlash(
 	import.meta.env.MODBRIDGE_RELAY_BASE_URL ||
 	import.meta.env.VITE_MODBRIDGE_RELAY_BASE_URL ||
-	'',
+	DEFAULT_RELAY_URL,
 )
 
-const siteUrl = trimTrailingSlash(import.meta.env.MODRINTH_URL || 'https://modrinth.com')
-const labrinthBaseUrl = trimTrailingSlash(
-	relayBaseUrl
-		? `${relayBaseUrl}/api`
-		: import.meta.env.MODRINTH_API_BASE_URL || 'https://api.modrinth.com',
-)
-const archonBaseUrl = trimTrailingSlash(
-	import.meta.env.MODRINTH_ARCHON_BASE_URL || 'https://archon.modrinth.com',
-)
-const sharedInstancesBaseUrl = trimTrailingSlash(
-	import.meta.env.SHARED_INSTANCES_API_BASE_URL || 'https://shared-instances.modrinth.com',
-)
+const siteUrl = relayBaseUrl
+const labrinthBaseUrl = `${relayBaseUrl}/api`
+const archonBaseUrl = `${relayBaseUrl}/archon`
+const sharedInstancesBaseUrl = `${relayBaseUrl}/shared-instances`
 
 export const config = {
 	relayBaseUrl,

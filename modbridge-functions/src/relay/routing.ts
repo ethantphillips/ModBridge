@@ -32,6 +32,15 @@ export const ROUTE_MAPPINGS: RouteMapping[] = [
 		},
 	},
 	{
+		prefix: '/modrinth/api',
+		target: {
+			upstreamHost: 'api.modrinth.com',
+			upstreamPrefix: '',
+			category: 'modrinth-api',
+			enableRewrite: true,
+		},
+	},
+	{
 		prefix: '/cdn',
 		target: {
 			upstreamHost: 'cdn.modrinth.com',
@@ -40,7 +49,24 @@ export const ROUTE_MAPPINGS: RouteMapping[] = [
 		},
 	},
 	{
+		prefix: '/modrinth/cdn',
+		target: {
+			upstreamHost: 'cdn.modrinth.com',
+			upstreamPrefix: '',
+			category: 'modrinth-cdn',
+		},
+	},
+	{
 		prefix: '/meta',
+		target: {
+			upstreamHost: 'launcher-meta.modrinth.com',
+			upstreamPrefix: '',
+			category: 'modrinth-cdn',
+			enableRewrite: true,
+		},
+	},
+	{
+		prefix: '/launcher-meta',
 		target: {
 			upstreamHost: 'launcher-meta.modrinth.com',
 			upstreamPrefix: '',
@@ -58,7 +84,24 @@ export const ROUTE_MAPPINGS: RouteMapping[] = [
 		},
 	},
 	{
+		prefix: '/piston-meta',
+		target: {
+			upstreamHost: 'piston-meta.mojang.com',
+			upstreamPrefix: '',
+			category: 'minecraft-meta',
+			enableRewrite: true,
+		},
+	},
+	{
 		prefix: '/minecraft/data',
+		target: {
+			upstreamHost: 'piston-data.mojang.com',
+			upstreamPrefix: '',
+			category: 'minecraft-data',
+		},
+	},
+	{
+		prefix: '/piston-data',
 		target: {
 			upstreamHost: 'piston-data.mojang.com',
 			upstreamPrefix: '',
@@ -74,7 +117,23 @@ export const ROUTE_MAPPINGS: RouteMapping[] = [
 		},
 	},
 	{
+		prefix: '/minecraft-resources',
+		target: {
+			upstreamHost: 'resources.download.minecraft.net',
+			upstreamPrefix: '',
+			category: 'minecraft-assets',
+		},
+	},
+	{
 		prefix: '/minecraft/libraries',
+		target: {
+			upstreamHost: 'libraries.minecraft.net',
+			upstreamPrefix: '',
+			category: 'minecraft-libraries',
+		},
+	},
+	{
+		prefix: '/minecraft-libraries',
 		target: {
 			upstreamHost: 'libraries.minecraft.net',
 			upstreamPrefix: '',
@@ -91,6 +150,15 @@ export const ROUTE_MAPPINGS: RouteMapping[] = [
 		},
 	},
 	{
+		prefix: '/minecraft-services',
+		target: {
+			upstreamHost: 'api.minecraftservices.com',
+			upstreamPrefix: '',
+			category: 'minecraft-services',
+			enableRewrite: true,
+		},
+	},
+	{
 		prefix: '/minecraft/session',
 		target: {
 			upstreamHost: 'sessionserver.mojang.com',
@@ -99,7 +167,23 @@ export const ROUTE_MAPPINGS: RouteMapping[] = [
 		},
 	},
 	{
+		prefix: '/mojang-session',
+		target: {
+			upstreamHost: 'sessionserver.mojang.com',
+			upstreamPrefix: '',
+			category: 'minecraft-session',
+		},
+	},
+	{
 		prefix: '/minecraft/textures',
+		target: {
+			upstreamHost: 'textures.minecraft.net',
+			upstreamPrefix: '',
+			category: 'minecraft-textures',
+		},
+	},
+	{
+		prefix: '/minecraft-textures',
 		target: {
 			upstreamHost: 'textures.minecraft.net',
 			upstreamPrefix: '',
@@ -116,7 +200,25 @@ export const ROUTE_MAPPINGS: RouteMapping[] = [
 		},
 	},
 	{
+		prefix: '/mojang-meta',
+		target: {
+			upstreamHost: 'launchermeta.mojang.com',
+			upstreamPrefix: '',
+			category: 'minecraft-meta',
+			enableRewrite: true,
+		},
+	},
+	{
 		prefix: '/minecraft/legacy-launcher',
+		target: {
+			upstreamHost: 'launcher.mojang.com',
+			upstreamPrefix: '',
+			category: 'minecraft-meta',
+			enableRewrite: true,
+		},
+	},
+	{
+		prefix: '/mojang-launcher',
 		target: {
 			upstreamHost: 'launcher.mojang.com',
 			upstreamPrefix: '',

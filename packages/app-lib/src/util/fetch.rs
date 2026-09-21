@@ -997,10 +997,21 @@ async fn fetch_advanced_with_target(
         }
 
 		let target_url = route_url_through_relay(url);
+
+		// HARD INTEGRITY CHECK: Never allow direct communication with Mojang or Modrinth
+		if (target_url.contains("modrinth.com") || target_url.contains("mojang.com") || target_url.contains("minecraft.net"))
+			&& !target_url.starts_with(get_relay_base_url())
+		{
+			panic!(
+				"CRITICAL SECURITY VIOLATION: Direct connection to {} is strictly forbidden! Must be routed through ModBridge Relay.",
+				target_url
+			);
+		}
+
 		let mut req = client.request(method.clone(), &target_url);
 
 		if let Some(token) = get_relay_token() {
-			if target_url != url || (get_relay_base_url().is_some() && target_url.starts_with(get_relay_base_url().unwrap())) {
+			if target_url != url || target_url.starts_with(get_relay_base_url()) {
 				req = req.header("X-Modbridge-Token", token);
 			}
 		}

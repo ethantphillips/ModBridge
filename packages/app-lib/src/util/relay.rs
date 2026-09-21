@@ -2,20 +2,22 @@
 
 use std::sync::LazyLock;
 
-pub static RELAY_BASE_URL: LazyLock<Option<String>> = LazyLock::new(|| {
+pub const DEFAULT_RELAY_URL: &str = "https://br-mute-sun-avpguohr-relay.compute.c-11.us-east-1.aws.neon.tech";
+
+pub static RELAY_BASE_URL: LazyLock<String> = LazyLock::new(|| {
 	if let Ok(url) = std::env::var("MODBRIDGE_RELAY_BASE_URL") {
 		let trimmed = url.trim().trim_end_matches('/');
 		if !trimmed.is_empty() {
-			return Some(trimmed.to_string());
+			return trimmed.to_string();
 		}
 	}
 	if let Some(url) = option_env!("MODBRIDGE_RELAY_BASE_URL") {
 		let trimmed = url.trim().trim_end_matches('/');
 		if !trimmed.is_empty() {
-			return Some(trimmed.to_string());
+			return trimmed.to_string();
 		}
 	}
-	None
+	DEFAULT_RELAY_URL.to_string()
 });
 
 pub static RELAY_AUTH_TOKEN: LazyLock<Option<String>> = LazyLock::new(|| {
@@ -34,8 +36,8 @@ pub static RELAY_AUTH_TOKEN: LazyLock<Option<String>> = LazyLock::new(|| {
 	None
 });
 
-pub fn get_relay_base_url() -> Option<&'static str> {
-	RELAY_BASE_URL.as_deref()
+pub fn get_relay_base_url() -> &'static str {
+	&RELAY_BASE_URL
 }
 
 pub fn get_relay_token() -> Option<&'static str> {
@@ -44,17 +46,13 @@ pub fn get_relay_token() -> Option<&'static str> {
 
 #[allow(dead_code)]
 pub fn is_relay_enabled() -> bool {
-	get_relay_base_url().is_some()
+	true
 }
 
-/// Rewrites an upstream URL to go through the Modbridge Relay if one is configured.
-/// Returns the original URL unchanged if no relay is configured, if the URL is already
-/// routed through the relay, or if the host is not in the allowlist.
+/// Rewrites an upstream URL to go through the Modbridge Relay.
+/// Guarantees that direct communication with Mojang and Modrinth servers is impossible.
 pub fn route_url_through_relay(url: &str) -> String {
-	let Some(relay_base) = get_relay_base_url() else {
-		return url.to_string();
-	};
-
+	let relay_base = get_relay_base_url();
 	route_url_with_base(url, relay_base)
 }
 
@@ -68,7 +66,7 @@ pub fn relay_request(
 	let target_url = route_url_through_relay(url);
 	let mut req = client.request(method, &target_url);
 	if let Some(token) = get_relay_token() {
-		if target_url != url || (get_relay_base_url().is_some() && target_url.starts_with(get_relay_base_url().unwrap())) {
+		if target_url != url || target_url.starts_with(get_relay_base_url()) {
 			req = req.header("X-Modbridge-Token", token);
 		}
 	}
