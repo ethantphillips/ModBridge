@@ -35,6 +35,9 @@ jobs:
     name: Build (Windows)
     env:
       VITE_STRIPE_PUBLISHABLE_KEY: pk_live_51JbFxJJygY5LJFfKLVVldb10HlLt24p421OWRsTOWc5sXYFOnFUXWieSc6HD3PHo25ktx8db1WcHr36XGFvZFVUz00V9ixrCs5
+      CARGO_BUILD_JOBS: 4
+      RUSTC_WRAPPER: sccache
+      SCCACHE_GHA_ENABLED: 'true'
     strategy:
       fail-fast: false
       matrix:
@@ -55,6 +58,16 @@ jobs:
         uses: actions-rust-lang/setup-rust-toolchain@v1
         with:
           rustflags: ''
+          cache: false
+
+      - name: Setup sccache
+        uses: mozilla-actions/sccache-action@v0.0.10
+
+      - name: Setup Rust cache
+        uses: swatinem/rust-cache@v2
+        with:
+          cache-targets: false
+          save-if: ${{ github.ref == 'refs/heads/main' }}
 
       - name: Setup Node
         uses: actions/setup-node@v4
@@ -63,9 +76,6 @@ jobs:
 
       - name: Enable Corepack
         run: corepack enable
-
-      - name: Setup Rust cache
-        uses: swatinem/rust-cache@v2
 
       - name: Generate tauri-dev.conf.json
         shell: bash
@@ -83,6 +93,7 @@ jobs:
           EOF
 
       - name: Setup Java
+        if: env.DIGICERT_ONE_SIGNER_CLIENT_CERTIFICATE_BASE64 != '' && (startsWith(github.ref, 'refs/tags/v') || inputs.sign-windows-binaries == true)
         uses: actions/setup-java@v4
         with:
           distribution: temurin
@@ -99,6 +110,9 @@ jobs:
 
       - name: Install dependencies
         run: pnpm install --no-frozen-lockfile
+
+      - name: Build frontend
+        run: pnpm turbo run build --filter=@modrinth/app-frontend
 
       - name: Set application version and environment
         shell: bash
@@ -146,6 +160,7 @@ jobs:
           Write-Host "Building Tauri bundles: $bundles"
           ${{ (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v') || inputs.app-version-override != '') && 'pnpm --filter=@modrinth/app run tauri build --config tauri-release.conf.json --verbose --bundles "$bundles"' || 'pnpm --filter=@modrinth/app run tauri build --config tauri-dev.conf.json --verbose --bundles "$bundles"' }}
           Remove-Item -Path signer-client-cert.p12 -ErrorAction SilentlyContinue
+          sccache --show-stats
         env:
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_KEY_PASSWORD }}
