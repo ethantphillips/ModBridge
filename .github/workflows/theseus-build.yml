@@ -136,7 +136,7 @@ jobs:
           fi
 
       - name: Install dependencies
-        run: pnpm install
+        run: pnpm install --no-frozen-lockfile
 
       - name: Set up Windows code signing
         if: contains(matrix.artifact-target-name, 'windows')

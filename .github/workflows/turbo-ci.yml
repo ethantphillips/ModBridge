@@ -70,7 +70,7 @@ jobs:
           features: rustls,postgres
 
       - name: Install dependencies
-        run: pnpm install
+        run: pnpm install --no-frozen-lockfile
 
       - name: Test modbridge functions
         run: |
