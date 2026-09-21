@@ -1,31 +1,30 @@
-name: Modrinth App release
+name: Modbridge App release
 on:
   workflow_run:
-    workflows: ['Modrinth App build']
+    workflows: ['Modbridge App build']
     types: [completed]
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: ${{ github.ref != 'refs/heads/main' && github.ref != 'refs/heads/prod' }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
 jobs:
   release:
-    name: Release Modrinth App
+    name: Release Modbridge App
     if: >-
       github.event.workflow_run.conclusion == 'success' &&
       github.event.workflow_run.event == 'push' &&
       startsWith(github.event.workflow_run.head_branch, 'v')
-    runs-on: namespace-profile-medium-amd64
+    runs-on: ubuntu-latest
     env:
       VERSION_TAG: ${{ github.event.workflow_run.head_branch }}
       LINUX_X64_BUNDLE_ARTIFACT_NAME: App bundle (x86_64-unknown-linux-gnu)
       WINDOWS_X64_BUNDLE_ARTIFACT_NAME: App bundle (x86_64-pc-windows-msvc)
       MACOS_UNIVERSAL_BUNDLE_ARTIFACT_NAME: App bundle (universal-apple-darwin)
-      LAUNCHER_FILES_BUCKET_BASE_URL: https://launcher-files.modrinth.com
 
     steps:
       - name: Check out code
-        uses: namespacelabs/nscloud-checkout-action@66f2dc6f6c42a8ac6c4e53473c4840006822831e # v9.0.1
+        uses: actions/checkout@v4
 
       - name: Verify ref is a tag
         env:
@@ -46,14 +45,16 @@ jobs:
           fi
           echo "Verified ${VERSION_TAG} is a tag pointing at ${HEAD_SHA}"
 
-      - name: Download Modrinth App artifacts
-        uses: dawidd6/action-download-artifact@b6e2e70617bc3265edd6dab6c906732b2f1ae151 # v21
+      - name: Download Modbridge App artifacts
+        uses: actions/download-artifact@v4
         with:
-          workflow: theseus-build.yml
-          workflow_conclusion: success
-          event: push
-          branch: ${{ env.VERSION_TAG }}
-          use_unzip: true
+          run-id: ${{ github.event.workflow_run.id }}
+          github-token: ${{ github.token }}
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
 
       - name: Extract app changelog
         env:
@@ -63,97 +64,45 @@ jobs:
           LAST_GITHUB_RELEASE_PUBLISHED_AT=$(gh api "repos/${{ github.repository }}/releases/latest" --jq '.published_at // ""' 2>/dev/null || true)
           LAST_GITHUB_RELEASE_PUBLISHED_AT="$LAST_GITHUB_RELEASE_PUBLISHED_AT" npx --yes tsx scripts/build-theseus-release-notes.ts
 
-      - name: Generate version manifest
-        run: |
-          # Reference: https://tauri.app/plugin/updater/#server-support
-          jq -nc \
-            --arg versionTag "${VERSION_TAG#v}" \
-            --rawfile releaseNotes release-notes.md \
-            --rawfile macOsAarch64UpdateArtifactSignature "${MACOS_UNIVERSAL_BUNDLE_ARTIFACT_NAME}/universal-apple-darwin/release/bundle/macos/Modrinth App.app.tar.gz.sig" \
-            --rawfile macOsX64UpdateArtifactSignature "${MACOS_UNIVERSAL_BUNDLE_ARTIFACT_NAME}/universal-apple-darwin/release/bundle/macos/Modrinth App.app.tar.gz.sig" \
-            --rawfile linuxX64UpdateArtifactSignature "${LINUX_X64_BUNDLE_ARTIFACT_NAME}/release/bundle/appimage/Modrinth App_${VERSION_TAG#v}_amd64.AppImage.tar.gz.sig" \
-            --rawfile windowsX64UpdateArtifactSignature "${WINDOWS_X64_BUNDLE_ARTIFACT_NAME}/release/bundle/nsis/Modrinth App_${VERSION_TAG#v}_x64-setup.nsis.zip.sig" \
-          '{
-            "version": $versionTag,
-            "notes": $releaseNotes,
-            "pub_date": now | todateiso8601,
-            "platforms": {
-              "darwin-aarch64": {
-                "signature": $macOsAarch64UpdateArtifactSignature,
-                "url": @uri "${{ env.LAUNCHER_FILES_BUCKET_BASE_URL }}/versions/\($versionTag)/macos/\("Modrinth App.app.tar.gz")",
-                "install_urls": [@uri "${{ env.LAUNCHER_FILES_BUCKET_BASE_URL }}/versions/\($versionTag)/macos/\("Modrinth App_" + $versionTag + "_universal.dmg")"]
-              },
-              "darwin-x86_64": {
-                "signature": $macOsX64UpdateArtifactSignature,
-                "url": @uri "${{ env.LAUNCHER_FILES_BUCKET_BASE_URL }}/versions/\($versionTag)/macos/\("Modrinth App.app.tar.gz")",
-                "install_urls": [@uri "${{ env.LAUNCHER_FILES_BUCKET_BASE_URL }}/versions/\($versionTag)/macos/\("Modrinth App_" + $versionTag + "_universal.dmg")"]
-              },
-              "linux-x86_64": {
-                "signature": $linuxX64UpdateArtifactSignature,
-                "url": @uri "${{ env.LAUNCHER_FILES_BUCKET_BASE_URL }}/versions/\($versionTag)/linux/\("Modrinth App_" + $versionTag + "_amd64.AppImage.tar.gz")",
-                "install_urls": [
-                  @uri "${{ env.LAUNCHER_FILES_BUCKET_BASE_URL }}/versions/\($versionTag)/linux/\("Modrinth App_" + $versionTag + "_amd64.deb")",
-                  @uri "${{ env.LAUNCHER_FILES_BUCKET_BASE_URL }}/versions/\($versionTag)/linux/\("Modrinth App_" + $versionTag + "_amd64.AppImage")",
-                  @uri "${{ env.LAUNCHER_FILES_BUCKET_BASE_URL }}/versions/\($versionTag)/linux/\("Modrinth App-" + $versionTag + "-1.x86_64.rpm")"
-                ]
-              },
-              "windows-x86_64": {
-                "signature": $windowsX64UpdateArtifactSignature,
-                "url": @uri "${{ env.LAUNCHER_FILES_BUCKET_BASE_URL }}/versions/\($versionTag)/windows/\("Modrinth App_" + $versionTag + "_x64-setup.nsis.zip")",
-                "install_urls": [@uri "${{ env.LAUNCHER_FILES_BUCKET_BASE_URL }}/versions/\($versionTag)/windows/\("Modrinth App_" + $versionTag + "_x64-setup.exe")"]
-              }
-            }
-          }' > updates.json
-
-          echo "Generated manifest for version ${VERSION_TAG}:"
-          cat updates.json
-
-      - name: Upload release artifacts
-        env:
-          AWS_ACCESS_KEY_ID: ${{ secrets.LAUNCHER_FILES_BUCKET_ACCESS_KEY_ID }}
-          AWS_SECRET_ACCESS_KEY: ${{ secrets.LAUNCHER_FILES_BUCKET_SECRET_ACCESS_KEY }}
-          AWS_BUCKET: ${{ secrets.LAUNCHER_FILES_BUCKET_NAME }}
-          AWS_REGION: ${{ secrets.LAUNCHER_FILES_BUCKET_REGION }}
-          AWS_ENDPOINT_URL: ${{ secrets.LAUNCHER_FILES_BUCKET_ENDPOINT_URL }}
-          AWS_PAGER: ''
-          # Work around incompatible checksum behavior with some S3-like object storage providers,
-          # such as Cloudflare R2. See:
-          # - https://developers.cloudflare.com/r2/examples/aws/aws-cli/
-          # - https://developers.cloudflare.com/r2/examples/aws/aws-sdk-java/
-          AWS_REQUEST_CHECKSUM_CALCULATION: when_required
-          AWS_RESPONSE_CHECKSUM_VALIDATION: when_required
-        run: |
-          for macosBundleType in 'macos' 'dmg'; do
-            aws s3 cp --recursive \
-              "${MACOS_UNIVERSAL_BUNDLE_ARTIFACT_NAME}/universal-apple-darwin/release/bundle/${macosBundleType}" \
-              "s3://${AWS_BUCKET}/versions/${VERSION_TAG#v}/macos"
-          done
-
-          for linuxBundleType in 'appimage' 'deb' 'rpm'; do
-            aws s3 cp --recursive \
-              "${LINUX_X64_BUNDLE_ARTIFACT_NAME}/release/bundle/${linuxBundleType}" \
-              "s3://${AWS_BUCKET}/versions/${VERSION_TAG#v}/linux"
-          done
-
-          for windowsBundleType in 'nsis'; do
-            aws s3 cp --recursive \
-              "${WINDOWS_X64_BUNDLE_ARTIFACT_NAME}/release/bundle/${windowsBundleType}" \
-              "s3://${AWS_BUCKET}/versions/${VERSION_TAG#v}/windows"
-          done
-
-          aws s3 cp updates.json "s3://${AWS_BUCKET}"
-
       - name: Create GitHub release
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           VERSION="${VERSION_TAG#v}"
 
+          NOTES_ARGS=()
+          if [ -s release-notes.md ]; then
+            NOTES_ARGS=(--notes-file release-notes.md)
+          else
+            NOTES_ARGS=(--generate-notes)
+          fi
+
+          # Collect all available release artifacts
+          RELEASE_FILES=()
+          while IFS= read -r file; do
+            if [ -f "$file" ]; then
+              RELEASE_FILES+=("$file")
+            fi
+          done < <(find . -type f \( \
+            -name "Modbridge*setup.exe" -o \
+            -name "Modbridge*setup.nsis.zip" -o \
+            -name "Modbridge*setup.nsis.zip.sig" -o \
+            -name "Modbridge*universal.dmg" -o \
+            -name "Modbridge*.app.tar.gz" -o \
+            -name "Modbridge*.app.tar.gz.sig" -o \
+            -name "Modbridge*.AppImage" -o \
+            -name "Modbridge*.AppImage.tar.gz" -o \
+            -name "Modbridge*.AppImage.tar.gz.sig" -o \
+            -name "Modbridge*.deb" -o \
+            -name "Modbridge*.rpm" \
+          \))
+
+          echo "Found ${#RELEASE_FILES[@]} release assets to upload:"
+          for f in "${RELEASE_FILES[@]}"; do
+            echo "  $f"
+          done
+
           gh release create "$VERSION_TAG" \
-            --title "Modrinth App ${VERSION}" \
-            --notes-file release-notes.md \
-            "${WINDOWS_X64_BUNDLE_ARTIFACT_NAME}/release/bundle/nsis/Modrinth App_${VERSION}_x64-setup.exe" \
-            "${MACOS_UNIVERSAL_BUNDLE_ARTIFACT_NAME}/universal-apple-darwin/release/bundle/dmg/Modrinth App_${VERSION}_universal.dmg" \
-            "${LINUX_X64_BUNDLE_ARTIFACT_NAME}/release/bundle/appimage/Modrinth App_${VERSION}_amd64.AppImage" \
-            "${LINUX_X64_BUNDLE_ARTIFACT_NAME}/release/bundle/deb/Modrinth App_${VERSION}_amd64.deb" \
-            "${LINUX_X64_BUNDLE_ARTIFACT_NAME}/release/bundle/rpm/Modrinth App-${VERSION}-1.x86_64.rpm"
+            --title "Modbridge ${VERSION}" \
+            "${NOTES_ARGS[@]}" \
+            "${RELEASE_FILES[@]}"
