@@ -136,17 +136,11 @@ jobs:
 
       - name: Build Windows app
         run: |
-          BUNDLES="nsis"
-          if [ -n "$TAURI_SIGNING_PRIVATE_KEY" ]; then
-            BUNDLES="nsis,updater"
-          fi
-          echo "Building Tauri bundles: $BUNDLES"
           pnpm --filter=@modrinth/app run tauri build \
             --target x86_64-pc-windows-msvc \
             --runner cargo-xwin \
             --config tauri-release.conf.json \
-            --verbose \
-            --bundles "$BUNDLES"
+            --verbose
           sccache --show-stats
         env:
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_PRIVATE_KEY }}
