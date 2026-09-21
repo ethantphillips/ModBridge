@@ -38,19 +38,10 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        platform:
-          [
-            macos-14,
-            windows-latest,
-            ubuntu-22.04,
-          ]
+        platform: [windows-latest]
         include:
-          - platform: macos-14
-            artifact-target-name: universal-apple-darwin
           - platform: windows-latest
             artifact-target-name: x86_64-pc-windows-msvc
-          - platform: ubuntu-22.04
-            artifact-target-name: x86_64-unknown-linux-gnu
 
     runs-on: ${{ matrix.platform }}
 

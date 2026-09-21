@@ -1,8 +1,7 @@
 //! Functions for fetching information from the Internet
 use super::io::{self, IOError};
 pub use super::relay::{
-	get_relay_base_url, get_relay_token, is_relay_enabled, relay_request,
-	route_url_through_relay,
+	get_relay_base_url, get_relay_token, relay_request, route_url_through_relay,
 };
 use crate::event::LoadingBarId;
 use crate::event::emit::emit_loading;

@@ -246,6 +246,7 @@ async fn run_credentials(
         && !project_id.trim().is_empty()
         && !credentials.is_offline()
     {
+        let server_id = uuid::Uuid::new_v4().to_string();
         let join_url = fetch::route_url_through_relay(
             "https://sessionserver.mojang.com/session/minecraft/join",
         );
