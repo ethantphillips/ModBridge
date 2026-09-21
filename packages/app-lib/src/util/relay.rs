@@ -42,6 +42,7 @@ pub fn get_relay_token() -> Option<&'static str> {
 	RELAY_AUTH_TOKEN.as_deref()
 }
 
+#[allow(dead_code)]
 pub fn is_relay_enabled() -> bool {
 	get_relay_base_url().is_some()
 }
