@@ -71,7 +71,7 @@ Each project may have its own file with detailed instructions:
 
 ### Comments
 
-- DO NOT use "heading" comments like: `=== Helper methods ===`.
+- DO NOT use "heading" comments like: "=== Helper methods ===".
 - Use doc comments, but avoid inline comments unless ABSOLUTELY necessary for clarity. Code should aim to be self documenting!
 
 ## Bash Guidelines
