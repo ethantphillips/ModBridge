@@ -117,12 +117,20 @@ jobs:
           rename-to: ${{ contains(matrix.artifact-target-name, 'windows') && 'dasel.exe' || 'dasel' }}
           chmod: 0755
 
+      - name: Install dependencies
+        run: pnpm install --no-frozen-lockfile
+
       - name: Set application version and environment
         shell: bash
         run: |
           APP_VERSION="${{ inputs.app-version-override }}"
           if [ -z "$APP_VERSION" ]; then
-            APP_VERSION="$(git describe --tags --always | sed -E 's/-([0-9]+)-(g[0-9a-fA-F]+)$/-canary+\1.\2/')"
+            RAW_VERSION="$(git describe --tags --always 2>/dev/null || echo "0.1.0")"
+            if [[ "$RAW_VERSION" =~ ^v?[0-9]+\.[0-9]+ ]]; then
+              APP_VERSION="$(echo "$RAW_VERSION" | sed -E 's/-([0-9]+)-(g[0-9a-fA-F]+)$/-canary+\1.\2/')"
+            else
+              APP_VERSION="0.1.0-dev+${RAW_VERSION}"
+            fi
           fi
           BUILD_ENVIRONMENT="${{ inputs.environment || 'prod' }}"
           echo "Setting application version to $APP_VERSION"
@@ -134,9 +142,6 @@ jobs:
           if [ -f "packages/app-lib/.env.${BUILD_ENVIRONMENT}" ]; then
             cp "packages/app-lib/.env.${BUILD_ENVIRONMENT}" packages/app-lib/.env
           fi
-
-      - name: Install dependencies
-        run: pnpm install --no-frozen-lockfile
 
       - name: Set up Windows code signing
         if: contains(matrix.artifact-target-name, 'windows')
