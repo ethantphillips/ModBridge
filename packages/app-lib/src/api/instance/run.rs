@@ -244,18 +244,23 @@ async fn run_credentials(
 
     if let Some(project_id) = server_play_project_id(&context.link)
         && !project_id.trim().is_empty()
+        && !credentials.is_offline()
     {
-        let server_id = uuid::Uuid::new_v4().to_string();
-        let join_result = fetch::INSECURE_REQWEST_CLIENT
-			.post("https://sessionserver.mojang.com/session/minecraft/join")
+        let join_url = fetch::route_url_through_relay(
+            "https://sessionserver.mojang.com/session/minecraft/join",
+        );
+        let mut join_req = fetch::INSECURE_REQWEST_CLIENT
+			.post(&join_url)
 			.json(&json!({
 				"accessToken": &credentials.access_token,
 				"selectedProfile": credentials.offline_profile.id.simple().to_string(),
 				"serverId": &server_id,
 			}))
-			.timeout(Duration::from_secs(5))
-			.send()
-			.await;
+			.timeout(Duration::from_secs(5));
+        if let Some(token) = fetch::get_relay_token() {
+            join_req = join_req.header("X-Modbridge-Token", token);
+        }
+        let join_result = join_req.send().await;
 
         match join_result {
             Ok(resp) if resp.status().is_success() => {

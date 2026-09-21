@@ -860,7 +860,7 @@ async function setupApp() {
 		document.getElementsByTagName('html')[0].classList.add('windows')
 	}
 
-	fetch(`https://api.modrinth.com/appCriticalAnnouncement.json?version=${version}`)
+	fetch(`${config.labrinthBaseUrl}/appCriticalAnnouncement.json?version=${version}`)
 		.then((response) => response.json())
 		.then((res) => {
 			if (res && res.header && res.body) {
@@ -869,11 +869,11 @@ async function setupApp() {
 		})
 		.catch(() => {
 			console.log(
-				`No critical announcement found at https://api.modrinth.com/appCriticalAnnouncement.json?version=${version}`,
+				`No critical announcement found at ${config.labrinthBaseUrl}/appCriticalAnnouncement.json?version=${version}`,
 			)
 		})
 
-	fetch(`https://modrinth.com/news/feed/articles.json`)
+	fetch(`${config.siteUrl}/news/feed/articles.json`)
 		.then((response) => response.json())
 		.then((res) => {
 			if (res && res.articles) {
@@ -1816,16 +1816,16 @@ const updatePopupMessages = defineMessages({
 	},
 	meteredBody: {
 		id: 'app.update-popup.body.metered',
-		defaultMessage: `Modrinth App v{version} is available now! Since you're on a metered network, we didn't automatically download it.`,
+		defaultMessage: `Modbridge v{version} is available now! Since you're on a metered network, we didn't automatically download it.`,
 	},
 	downloadedBody: {
 		id: 'app.update-popup.body.download-complete',
-		defaultMessage: `Modrinth App v{version} has finished downloading. Reload to update now, or automatically when you close Modrinth App.`,
+		defaultMessage: `Modbridge v{version} has finished downloading. Reload to update now, or automatically when you close Modbridge.`,
 	},
 	linuxBody: {
 		id: 'app.update-popup.body.linux',
 		defaultMessage:
-			'Modrinth App v{version} is available. Use your package manager to update for the latest features and fixes!',
+			'Modbridge v{version} is available. Use your package manager to update for the latest features and fixes!',
 	},
 	reload: {
 		id: 'app.update-popup.reload',

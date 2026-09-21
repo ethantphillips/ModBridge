@@ -265,12 +265,50 @@ impl OnlineProfileCacheIntent {
 }
 
 impl Credentials {
+    /// Returns true if this credential represents an offline profile.
+    pub fn is_offline(&self) -> bool {
+        self.access_token == "0" || self.refresh_token.is_empty()
+    }
+
+    /// Creates and persists an offline profile with a deterministically derived UUID.
+    pub async fn create_offline_user(
+        username: &str,
+        pin: &str,
+        exec: impl sqlx::Executor<'_, Database = sqlx::Sqlite> + Copy,
+    ) -> crate::Result<Self> {
+        let uuid = crate::state::derive_offline_uuid(username, pin)
+            .map_err(|e| crate::ErrorKind::InputError(e.to_string()))?;
+
+        let credentials = Self {
+            offline_profile: MinecraftProfile {
+                id: uuid,
+                name: username.trim().to_string(),
+                ..MinecraftProfile::default()
+            },
+            access_token: "0".to_string(),
+            refresh_token: String::new(),
+            expires: Utc
+                .timestamp_opt(253402300799, 0)
+                .single()
+                .unwrap_or_else(Utc::now),
+            active: true,
+        };
+
+        credentials.upsert(exec).await?;
+        Ok(credentials)
+    }
+
     /// Refreshes the authentication tokens for this user if they are expired, or
     /// very close to expiration.
     async fn refresh(
         &mut self,
         exec: impl sqlx::Executor<'_, Database = sqlx::Sqlite> + Copy,
     ) -> crate::Result<()> {
+        // MODBRIDGE: Skip OAuth token refresh for offline accounts
+        if self.is_offline() {
+            return Ok(());
+        }
+
         // Use a margin of 5 minutes to give e.g. Minecraft and potentially
         // other operations that depend on a fresh token 5 minutes to complete
         // from now, and deal with some classes of clock skew
@@ -351,6 +389,11 @@ impl Credentials {
         &self,
         cache_intent: OnlineProfileCacheIntent,
     ) -> Option<Arc<MinecraftProfile>> {
+        // MODBRIDGE: Offline profiles do not contact Mojang servers
+        if self.is_offline() {
+            return None;
+        }
+
         let max_age = cache_intent.max_age();
         let stale_profile = {
             let mut profile_cache = PROFILE_CACHE.lock().await;
@@ -1155,15 +1198,18 @@ async fn minecraft_token(
     let token = token.token;
 
     let res = auth_retry(|| {
-        INSECURE_REQWEST_CLIENT
-            .post("https://api.minecraftservices.com/launcher/login")
-            .header("Accept", "application/json")
-            .header("User-Agent", MINECRAFT_SERVICES_USER_AGENT)
-            .json(&json!({
-                "platform": "PC_LAUNCHER",
-                "xtoken": format!("XBL3.0 x={uhs};{token}"),
-            }))
-            .send()
+        crate::util::fetch::relay_request(
+            &INSECURE_REQWEST_CLIENT,
+            reqwest::Method::POST,
+            "https://api.minecraftservices.com/launcher/login",
+        )
+        .header("Accept", "application/json")
+        .header("User-Agent", MINECRAFT_SERVICES_USER_AGENT)
+        .json(&json!({
+            "platform": "PC_LAUNCHER",
+            "xtoken": format!("XBL3.0 x={uhs};{token}"),
+        }))
+        .send()
     })
     .await
     .map_err(|source| MinecraftAuthenticationError::Request {
@@ -1384,15 +1430,18 @@ async fn minecraft_profile(
     token: &str,
 ) -> Result<MinecraftProfile, MinecraftAuthenticationError> {
     let res = auth_retry(|| {
-        INSECURE_REQWEST_CLIENT
-            .get("https://api.minecraftservices.com/minecraft/profile")
-            .header("Accept", "application/json")
-            .header("User-Agent", MINECRAFT_SERVICES_USER_AGENT)
-            .bearer_auth(token)
-            // Profiles may be refreshed periodically in response to user actions,
-            // so we want each refresh to be fast
-            .timeout(std::time::Duration::from_secs(10))
-            .send()
+        crate::util::fetch::relay_request(
+            &INSECURE_REQWEST_CLIENT,
+            reqwest::Method::GET,
+            "https://api.minecraftservices.com/minecraft/profile",
+        )
+        .header("Accept", "application/json")
+        .header("User-Agent", MINECRAFT_SERVICES_USER_AGENT)
+        .bearer_auth(token)
+        // Profiles may be refreshed periodically in response to user actions,
+        // so we want each refresh to be fast
+        .timeout(std::time::Duration::from_secs(10))
+        .send()
     })
     .await
     .map_err(|source| MinecraftAuthenticationError::Request {
@@ -1436,12 +1485,15 @@ async fn minecraft_entitlements(
     token: &str,
 ) -> Result<MinecraftEntitlements, MinecraftAuthenticationError> {
     let res = auth_retry(|| {
-		INSECURE_REQWEST_CLIENT
-			.get(format!("https://api.minecraftservices.com/entitlements/license?requestId={}", Uuid::new_v4()))
-			.header("Accept", "application/json")
-			.header("User-Agent", MINECRAFT_SERVICES_USER_AGENT)
-			.bearer_auth(token)
-			.send()
+		crate::util::fetch::relay_request(
+			&INSECURE_REQWEST_CLIENT,
+			reqwest::Method::GET,
+			&format!("https://api.minecraftservices.com/entitlements/license?requestId={}", Uuid::new_v4()),
+		)
+		.header("Accept", "application/json")
+		.header("User-Agent", MINECRAFT_SERVICES_USER_AGENT)
+		.bearer_auth(token)
+		.send()
 	})
     .await.map_err(|source| MinecraftAuthenticationError::Request { source, step: MinecraftAuthStep::MinecraftEntitlements })?;
 

@@ -9,6 +9,7 @@ pub fn init<R: Runtime>() -> TauriPlugin<R> {
         .invoke_handler(tauri::generate_handler![
             check_reachable,
             login,
+            add_offline_user,
             remove_user,
             get_default_user,
             set_default_user,
@@ -50,7 +51,7 @@ pub async fn login<R: Runtime>(
             },
         )?),
     )
-    .title("Sign into Modrinth")
+    .title("Sign into Modbridge")
     .always_on_top(true)
     .min_inner_size(500.0, 500.0)
     .inner_size(1000.0, 700.0)
@@ -84,6 +85,14 @@ pub async fn login<R: Runtime>(
 
     window.close()?;
     Ok(None)
+}
+
+#[tauri::command]
+pub async fn add_offline_user(
+    username: String,
+    pin: String,
+) -> Result<Credentials> {
+    Ok(minecraft_auth::add_offline_user(&username, &pin).await?)
 }
 
 #[tauri::command]

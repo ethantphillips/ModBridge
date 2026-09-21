@@ -3,11 +3,50 @@
 		v-if="accounts.length === 0"
 		class="flex flex-col gap-3 bg-button-bg border border-solid border-surface-5 rounded-xl p-3 mt-2"
 	>
-		<span>{{ formatMessage(messages.notSignedIn) }}</span>
-		<Button type="colored" color="brand" :disabled="loginDisabled" @click="login()">
+		<div class="flex flex-col gap-1">
+			<span class="font-semibold text-contrast text-sm">{{ formatMessage(messages.offlineAccount) }}</span>
+			<span class="text-secondary text-xs">{{ formatMessage(messages.offlineHelp) }}</span>
+		</div>
+		<div class="flex flex-col gap-2">
+			<Input
+				v-model="offlineUsername"
+				:placeholder="formatMessage(messages.usernamePlaceholder)"
+				:icon="UserIcon"
+				size="small"
+			/>
+			<Input
+				v-model="offlinePin"
+				type="password"
+				:placeholder="formatMessage(messages.pinPlaceholder)"
+				:icon="LockIcon"
+				size="small"
+			/>
+			<span v-if="offlineError" class="text-xs text-red">{{ offlineError }}</span>
+			<Button
+				type="colored"
+				color="brand"
+				class="w-full"
+				:disabled="!offlineUsername.trim() || !offlinePin.trim() || isCreatingOffline"
+				@click="handleCreateOfflineUser()"
+			>
+				<PlusIcon v-if="!isCreatingOffline" />
+				<SpinnerIcon v-else class="animate-spin" />
+				{{ formatMessage(messages.createOfflineProfile) }}
+			</Button>
+		</div>
+		<div class="flex items-center gap-2">
+			<hr class="flex-grow border-0 border-t border-solid border-surface-5 my-0" />
+			<span class="text-secondary text-xs">or</span>
+			<hr class="flex-grow border-0 border-t border-solid border-surface-5 my-0" />
+		</div>
+		<Button
+			class="w-full !bg-button-bg !text-primary ![box-shadow:var(--shadow-button)]"
+			:disabled="loginDisabled"
+			@click="login()"
+		>
 			<LogInIcon v-if="!loginDisabled" />
 			<SpinnerIcon v-else class="animate-spin" />
-			{{ formatMessage(messages.signInToMinecraft) }}
+			{{ formatMessage(messages.signInWithMicrosoft) }}
 		</Button>
 	</div>
 	<Accordion
@@ -17,7 +56,7 @@
 		:open-by-default="false"
 	>
 		<template #title>
-			<div class="flex gap-2 w-full min-w-0">
+			<div class="flex gap-2 w-full min-w-0 items-center">
 				<Avatar
 					size="36px"
 					:src="
@@ -27,9 +66,22 @@
 					"
 				/>
 				<div class="flex flex-col items-start w-full min-w-0">
-					<span class="truncate w-full text-left">{{
-						selectedAccount ? selectedAccount.profile.name : formatMessage(messages.selectAccount)
-					}}</span>
+					<div class="flex items-center gap-2 w-full min-w-0">
+						<span class="truncate text-left font-semibold text-contrast">{{
+							selectedAccount ? selectedAccount.profile.name : formatMessage(messages.selectAccount)
+						}}</span>
+						<span
+							v-if="selectedAccount"
+							class="text-[10px] px-1.5 py-0.5 rounded font-medium shrink-0"
+							:class="
+								isAccountOffline(selectedAccount)
+									? 'bg-brand/20 text-brand'
+									: 'bg-surface-4 text-secondary'
+							"
+						>
+							{{ isAccountOffline(selectedAccount) ? 'Offline' : 'Microsoft' }}
+						</span>
+					</div>
 					<span class="text-secondary text-xs">{{ formatMessage(messages.minecraftAccount) }}</span>
 				</div>
 			</div>
@@ -57,6 +109,16 @@
 						>
 							{{ account.profile.name }}
 						</p>
+						<span
+							class="text-[10px] px-1.5 py-0.5 rounded font-medium shrink-0 ml-auto mr-1"
+							:class="
+								isAccountOffline(account)
+									? 'bg-brand/20 text-brand'
+									: 'bg-surface-4 text-secondary'
+							"
+						>
+							{{ isAccountOffline(account) ? 'Offline' : 'Microsoft' }}
+						</span>
 					</button>
 					<IconButton
 						v-tooltip="formatMessage(messages.removeAccount)"
@@ -70,15 +132,60 @@
 					</IconButton>
 				</div>
 			</template>
-			<div class="flex flex-col gap-2 px-2 pt-2">
+			<div v-if="!showAddOfflineForm" class="flex flex-col gap-2 px-2 pt-2">
 				<Button
-					v-if="accounts.length > 0"
+					class="w-full !bg-button-bg !text-primary ![box-shadow:var(--shadow-button)]"
+					@click="showAddOfflineForm = true"
+				>
+					<PlusIcon />
+					{{ formatMessage(messages.addOfflineAccount) }}
+				</Button>
+				<Button
 					class="w-full !bg-button-bg !text-primary ![box-shadow:var(--shadow-button)]"
 					:disabled="loginDisabled"
 					@click="login()"
 				>
-					<PlusIcon />
-					{{ formatMessage(messages.addAccount) }}
+					<LogInIcon />
+					{{ formatMessage(messages.signInWithMicrosoft) }}
+				</Button>
+			</div>
+			<div
+				v-else
+				class="flex flex-col gap-2 p-3 mx-2 mt-2 bg-surface-2 border border-solid border-surface-5 rounded-lg"
+			>
+				<div class="flex items-center justify-between">
+					<span class="text-xs font-semibold text-contrast">{{ formatMessage(messages.newOfflineAccount) }}</span>
+					<button
+						class="text-xs text-secondary hover:text-contrast bg-transparent border-0 cursor-pointer p-0"
+						@click="showAddOfflineForm = false"
+					>
+						Cancel
+					</button>
+				</div>
+				<Input
+					v-model="offlineUsername"
+					:placeholder="formatMessage(messages.usernamePlaceholder)"
+					:icon="UserIcon"
+					size="small"
+				/>
+				<Input
+					v-model="offlinePin"
+					type="password"
+					:placeholder="formatMessage(messages.pinPlaceholder)"
+					:icon="LockIcon"
+					size="small"
+				/>
+				<span v-if="offlineError" class="text-xs text-red">{{ offlineError }}</span>
+				<Button
+					type="colored"
+					color="brand"
+					class="w-full"
+					:disabled="!offlineUsername.trim() || !offlinePin.trim() || isCreatingOffline"
+					@click="handleCreateOfflineUser()"
+				>
+					<PlusIcon v-if="!isCreatingOffline" />
+					<SpinnerIcon v-else class="animate-spin" />
+					{{ formatMessage(messages.createOfflineProfile) }}
 				</Button>
 			</div>
 		</div>
@@ -87,12 +194,14 @@
 
 <script setup lang="ts">
 import {
+	LockIcon,
 	LogInIcon,
 	PlusIcon,
 	RadioButtonCheckedIcon,
 	RadioButtonIcon,
 	SpinnerIcon,
 	TrashIcon,
+	UserIcon,
 } from '@modrinth/assets'
 import {
 	Accordion,
@@ -101,6 +210,7 @@ import {
 	defineMessages,
 	IconButton,
 	injectNotificationManager,
+	Input,
 	useVIntl,
 } from '@modrinth/ui'
 import type { Ref } from 'vue'
@@ -110,6 +220,7 @@ import { useAppEvent } from '@/composables/use-app-event'
 import { handleSevereError } from '@/composables/use-error.js'
 import { trackEvent } from '@/helpers/analytics'
 import {
+	add_offline_user,
 	get_default_user,
 	login as login_flow,
 	remove_user,
@@ -132,6 +243,8 @@ type MinecraftCredential = {
 		id: string
 		name: string
 	}
+	access_token?: string
+	refresh_token?: string
 }
 
 const accounts: Ref<MinecraftCredential[]> = ref([])
@@ -140,6 +253,47 @@ const defaultUser = ref<string | undefined>()
 const equippedSkin = ref<Skin | null>(null)
 const equippedHeadUrl = ref<string>()
 let headRequest = 0
+
+const offlineUsername = ref('')
+const offlinePin = ref('')
+const isCreatingOffline = ref(false)
+const offlineError = ref<string | null>(null)
+const showAddOfflineForm = ref(false)
+
+function isAccountOffline(account?: MinecraftCredential | null): boolean {
+	if (!account) return false
+	return (
+		account.access_token === '0' ||
+		account.access_token === 'offline' ||
+		!account.refresh_token
+	)
+}
+
+async function handleCreateOfflineUser() {
+	if (!offlineUsername.value.trim() || !offlinePin.value.trim()) {
+		offlineError.value = 'Username and Identity PIN are required.'
+		return
+	}
+	isCreatingOffline.value = true
+	offlineError.value = null
+	try {
+		const newCreds = await add_offline_user(
+			offlineUsername.value.trim(),
+			offlinePin.value.trim(),
+		)
+		offlineUsername.value = ''
+		offlinePin.value = ''
+		showAddOfflineForm.value = false
+		await refreshValues()
+		if (newCreds) {
+			await setAccount(newCreds)
+		}
+	} catch (err: any) {
+		offlineError.value = err?.message || String(err)
+	} finally {
+		isCreatingOffline.value = false
+	}
+}
 
 async function updateHeadUrl(skin: Skin | null) {
 	const request = ++headRequest
@@ -273,6 +427,14 @@ const messages = defineMessages({
 		id: 'minecraft-account.add-account',
 		defaultMessage: 'Add account',
 	},
+	addOfflineAccount: {
+		id: 'minecraft-account.add-offline-account',
+		defaultMessage: 'Add Offline Account',
+	},
+	newOfflineAccount: {
+		id: 'minecraft-account.new-offline-account',
+		defaultMessage: 'New Offline Account',
+	},
 	removeAccount: {
 		id: 'minecraft-account.remove-account',
 		defaultMessage: 'Remove account',
@@ -288,6 +450,30 @@ const messages = defineMessages({
 	signInToMinecraft: {
 		id: 'minecraft-account.sign-in',
 		defaultMessage: 'Sign in to Minecraft',
+	},
+	offlineAccount: {
+		id: 'minecraft-account.offline-account',
+		defaultMessage: 'Offline Account',
+	},
+	createOfflineProfile: {
+		id: 'minecraft-account.create-offline',
+		defaultMessage: 'Create Offline Profile',
+	},
+	offlineHelp: {
+		id: 'minecraft-account.offline-help',
+		defaultMessage: 'Deterministic offline identity. The same Username + PIN always reproduces the same UUID.',
+	},
+	usernamePlaceholder: {
+		id: 'minecraft-account.username-placeholder',
+		defaultMessage: 'Player name (e.g. Steve)',
+	},
+	pinPlaceholder: {
+		id: 'minecraft-account.pin-placeholder',
+		defaultMessage: 'Identity PIN (e.g. 1234)',
+	},
+	signInWithMicrosoft: {
+		id: 'minecraft-account.sign-in-microsoft',
+		defaultMessage: 'Sign in with Microsoft',
 	},
 })
 </script>

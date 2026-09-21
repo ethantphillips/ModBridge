@@ -1,5 +1,9 @@
 //! Functions for fetching information from the Internet
 use super::io::{self, IOError};
+pub use super::relay::{
+	get_relay_base_url, get_relay_token, is_relay_enabled, relay_request,
+	route_url_through_relay,
+};
 use crate::event::LoadingBarId;
 use crate::event::emit::emit_loading;
 use crate::util::content_hash::{ContentHasher, temporary_file};
@@ -993,7 +997,14 @@ async fn fetch_advanced_with_target(
             .into());
         }
 
-        let mut req = client.request(method.clone(), url);
+		let target_url = route_url_through_relay(url);
+		let mut req = client.request(method.clone(), &target_url);
+
+		if let Some(token) = get_relay_token() {
+			if target_url != url || (get_relay_base_url().is_some() && target_url.starts_with(get_relay_base_url().unwrap())) {
+				req = req.header("X-Modbridge-Token", token);
+			}
+		}
 
         if let Some(body) = &json_body {
             req = req.json(body);

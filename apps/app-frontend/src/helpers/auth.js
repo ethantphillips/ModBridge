@@ -34,6 +34,16 @@ export async function login() {
 }
 
 /**
+ * Add a deterministic offline user account
+ * @param {string} username
+ * @param {string} pin
+ * @returns {Promise<Credentials>}
+ */
+export async function add_offline_user(username, pin) {
+	return await invoke('plugin:auth|add_offline_user', { username, pin })
+}
+
+/**
  * Retrieves the default user
  * @return {Promise<UUID | undefined>}
  */

@@ -14,7 +14,7 @@ use crate::{
         MINECRAFT_SERVICES_USER_AGENT, MinecraftProfile, PROFILE_CACHE,
         ProfileCacheEntry,
     },
-    util::fetch::INSECURE_REQWEST_CLIENT,
+    util::fetch::{INSECURE_REQWEST_CLIENT, relay_request},
 };
 
 /// Provides operations for interacting with capes on a Minecraft player profile.
@@ -26,18 +26,21 @@ impl MinecraftCapeOperation {
         cape_id: Uuid,
     ) -> crate::Result<()> {
         update_profile_cache_from_response(
-            INSECURE_REQWEST_CLIENT
-				.put("https://api.minecraftservices.com/minecraft/profile/capes/active")
-				.header("Content-Type", "application/json; charset=utf-8")
-				.header("Accept", "application/json")
-				.header("User-Agent", MINECRAFT_SERVICES_USER_AGENT)
-				.bearer_auth(&credentials.access_token)
-				.json(&json!({
-					"capeId": cape_id.hyphenated(),
-                }))
-                .send()
-                .await
-                .and_then(|response| response.error_for_status())?
+            relay_request(
+                &INSECURE_REQWEST_CLIENT,
+                reqwest::Method::PUT,
+                "https://api.minecraftservices.com/minecraft/profile/capes/active",
+            )
+            .header("Content-Type", "application/json; charset=utf-8")
+            .header("Accept", "application/json")
+            .header("User-Agent", MINECRAFT_SERVICES_USER_AGENT)
+            .bearer_auth(&credentials.access_token)
+            .json(&json!({
+                "capeId": cape_id.hyphenated(),
+            }))
+            .send()
+            .await
+            .and_then(|response| response.error_for_status())?,
         )
         .await;
 
@@ -46,14 +49,17 @@ impl MinecraftCapeOperation {
 
     pub async fn unequip_any(credentials: &Credentials) -> crate::Result<()> {
         update_profile_cache_from_response(
-			INSECURE_REQWEST_CLIENT
-				.delete("https://api.minecraftservices.com/minecraft/profile/capes/active")
-				.header("Accept", "application/json")
-				.header("User-Agent", MINECRAFT_SERVICES_USER_AGENT)
-				.bearer_auth(&credentials.access_token)
-				.send()
-				.await
-                .and_then(|response| response.error_for_status())?
+            relay_request(
+                &INSECURE_REQWEST_CLIENT,
+                reqwest::Method::DELETE,
+                "https://api.minecraftservices.com/minecraft/profile/capes/active",
+            )
+            .header("Accept", "application/json")
+            .header("User-Agent", MINECRAFT_SERVICES_USER_AGENT)
+            .bearer_auth(&credentials.access_token)
+            .send()
+            .await
+            .and_then(|response| response.error_for_status())?,
         )
         .await;
 
@@ -97,17 +103,18 @@ impl MinecraftSkinOperation {
             );
 
         let profile = update_profile_cache_from_response(
-            INSECURE_REQWEST_CLIENT
-                .post(
-                    "https://api.minecraftservices.com/minecraft/profile/skins",
-                )
-                .header("Accept", "application/json")
-                .header("User-Agent", MINECRAFT_SERVICES_USER_AGENT)
-                .bearer_auth(&credentials.access_token)
-                .multipart(form)
-                .send()
-                .await
-                .and_then(|response| response.error_for_status())?,
+            relay_request(
+                &INSECURE_REQWEST_CLIENT,
+                reqwest::Method::POST,
+                "https://api.minecraftservices.com/minecraft/profile/skins",
+            )
+            .header("Accept", "application/json")
+            .header("User-Agent", MINECRAFT_SERVICES_USER_AGENT)
+            .bearer_auth(&credentials.access_token)
+            .multipart(form)
+            .send()
+            .await
+            .and_then(|response| response.error_for_status())?,
         )
         .await;
 
@@ -116,14 +123,17 @@ impl MinecraftSkinOperation {
 
     pub async fn unequip_any(credentials: &Credentials) -> crate::Result<()> {
         update_profile_cache_from_response(
-			INSECURE_REQWEST_CLIENT
-				.delete("https://api.minecraftservices.com/minecraft/profile/skins/active")
-				.header("Accept", "application/json")
-				.header("User-Agent", MINECRAFT_SERVICES_USER_AGENT)
-				.bearer_auth(&credentials.access_token)
-				.send()
-				.await
-                .and_then(|response| response.error_for_status())?
+            relay_request(
+                &INSECURE_REQWEST_CLIENT,
+                reqwest::Method::DELETE,
+                "https://api.minecraftservices.com/minecraft/profile/skins/active",
+            )
+            .header("Accept", "application/json")
+            .header("User-Agent", MINECRAFT_SERVICES_USER_AGENT)
+            .bearer_auth(&credentials.access_token)
+            .send()
+            .await
+            .and_then(|response| response.error_for_status())?,
         )
         .await;
 

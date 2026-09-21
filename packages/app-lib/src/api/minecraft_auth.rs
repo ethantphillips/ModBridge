@@ -8,15 +8,19 @@ use crate::util::fetch::INSECURE_REQWEST_CLIENT;
 
 #[tracing::instrument]
 pub async fn check_reachable() -> crate::Result<()> {
-    let resp = INSECURE_REQWEST_CLIENT
-        .get("https://sessionserver.mojang.com/session/minecraft/hasJoined")
-        .send()
-        .await?;
-    if resp.status() == StatusCode::NO_CONTENT {
-        return Ok(());
-    }
-    resp.error_for_status()?;
-    Ok(())
+	let target_url = crate::util::fetch::route_url_through_relay(
+		"https://sessionserver.mojang.com/session/minecraft/hasJoined",
+	);
+	let mut req = INSECURE_REQWEST_CLIENT.get(&target_url);
+	if let Some(token) = crate::util::fetch::get_relay_token() {
+		req = req.header("X-Modbridge-Token", token);
+	}
+	let resp = req.send().await?;
+	if resp.status() == StatusCode::NO_CONTENT {
+		return Ok(());
+	}
+	resp.error_for_status()?;
+	Ok(())
 }
 
 #[tracing::instrument]
@@ -35,6 +39,27 @@ pub async fn finish_login(
 
     let credentials =
         crate::state::login_finish(code, flow, &state.pool).await?;
+
+    if let Err(error) =
+        crate::onboarding_checklist::mark_logged_into_minecraft().await
+    {
+        tracing::warn!(
+            "Failed to mark Minecraft login in onboarding checklist: {error}"
+        );
+    }
+
+    Ok(credentials)
+}
+
+/// Create a new offline user identity using username + Identity PIN.
+#[tracing::instrument]
+pub async fn add_offline_user(
+    username: &str,
+    pin: &str,
+) -> crate::Result<Credentials> {
+    let state = State::get().await?;
+    let credentials =
+        Credentials::create_offline_user(username, pin, &state.pool).await?;
 
     if let Err(error) =
         crate::onboarding_checklist::mark_logged_into_minecraft().await

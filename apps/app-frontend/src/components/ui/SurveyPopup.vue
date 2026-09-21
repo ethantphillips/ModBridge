@@ -8,6 +8,7 @@ import { onMounted, onUnmounted, ref } from 'vue'
 import { release_ads_window_hold, take_ads_window_hold } from '@/helpers/ads.js'
 import { list } from '@/helpers/instance'
 import { get as getCreds } from '@/helpers/mr_auth.ts'
+import { config } from '@/config'
 
 let adsWindowHold = false
 
@@ -159,7 +160,7 @@ async function processPendingSurveys() {
 
 	let surveys: Survey[] = []
 	try {
-		surveys = await $fetch('https://api.modrinth.com/v2/surveys')
+		surveys = await $fetch(`${config.labrinthBaseUrl}/v2/surveys`)
 	} catch (e) {
 		console.error('Error fetching surveys:', e)
 	}

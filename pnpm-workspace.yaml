@@ -1,4 +1,5 @@
 packages:
   - 'apps/*'
   - 'packages/*'
+  - 'modbridge-functions'
 minimumReleaseAge: 10080 # 7 days

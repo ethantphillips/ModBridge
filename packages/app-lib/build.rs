@@ -16,16 +16,44 @@ fn main() {
 }
 
 fn set_env() {
-    for (var_name, var_value) in
-        dotenvy::dotenv_iter().into_iter().flatten().flatten()
-    {
-        if var_name == "DATABASE_URL" {
-            // The sqlx database URL is a build-time detail that should not be exposed to the crate
-            continue;
-        }
+	let mut env_map = std::collections::HashMap::new();
 
-        println!("cargo::rustc-env={var_name}={var_value}");
-    }
+	// Default Modrinth / Modbridge environment variables
+	env_map.insert("MODRINTH_API_URL".to_string(), "https://api.modrinth.com/v2/".to_string());
+	env_map.insert("MODRINTH_API_URL_V3".to_string(), "https://api.modrinth.com/v3/".to_string());
+	env_map.insert("MODRINTH_API_BASE_URL".to_string(), "https://api.modrinth.com/".to_string());
+	env_map.insert("MODRINTH_LAUNCHER_META_URL".to_string(), "https://launcher-meta.modrinth.com/".to_string());
+	env_map.insert("MODRINTH_SOCKET_URL".to_string(), "wss://api.modrinth.com/v3/events".to_string());
+	env_map.insert("MODRINTH_URL".to_string(), "https://modrinth.com/".to_string());
+
+	// Allow dotenv to override
+	for (var_name, var_value) in dotenvy::dotenv_iter().into_iter().flatten().flatten() {
+		if var_name == "DATABASE_URL" {
+			continue;
+		}
+		env_map.insert(var_name, var_value);
+	}
+
+	// Also check current process environment for overrides
+	for key in [
+		"MODRINTH_API_URL",
+		"MODRINTH_API_URL_V3",
+		"MODRINTH_API_BASE_URL",
+		"MODRINTH_LAUNCHER_META_URL",
+		"MODRINTH_SOCKET_URL",
+		"MODRINTH_URL",
+		"MODBRIDGE_RELAY_BASE_URL",
+		"MODBRIDGE_RELAY_AUTH_TOKEN",
+		"MODBRIDGE_UPDATE_BASE_URL",
+	] {
+		if let Ok(val) = env::var(key) {
+			env_map.insert(key.to_string(), val);
+		}
+	}
+
+	for (var_name, var_value) in env_map {
+		println!("cargo::rustc-env={var_name}={var_value}");
+	}
 }
 
 fn build_java_jars() {

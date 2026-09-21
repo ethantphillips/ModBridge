@@ -42,6 +42,9 @@ pub use self::discord::*;
 mod minecraft_auth;
 pub use self::minecraft_auth::*;
 
+pub mod offline_identity;
+pub use self::offline_identity::*;
+
 pub mod minecraft_skins;
 
 mod cache;
