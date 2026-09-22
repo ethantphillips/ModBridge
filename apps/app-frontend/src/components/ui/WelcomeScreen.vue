@@ -67,10 +67,8 @@ function handleQuickCreate(event: KeyboardEvent) {
 		return
 	}
 
-	if (!offline.value) {
-		event.preventDefault()
-		showCreationModal?.()
-	}
+	event.preventDefault()
+	showCreationModal?.()
 }
 
 onMounted(() => {
@@ -111,7 +109,6 @@ onUnmounted(() => {
 						color="brand"
 						size="lg"
 						class="w-full justify-center !shadow-none"
-						:disabled="offline"
 						@click="router.push('/browse/modpack')"
 					>
 						<CompassIcon />
@@ -121,7 +118,6 @@ onUnmounted(() => {
 						type="outlined"
 						size="lg"
 						class="w-full justify-center !shadow-none"
-						:disabled="offline"
 						@click="showCreationModal?.()"
 					>
 						<PlusIcon />
@@ -145,7 +141,7 @@ onUnmounted(() => {
 			class="flex flex-col h-max items-center justify-end gap-4 text-sm leading-5 text-secondary"
 		>
 			<span class="whitespace-nowrap">{{ formatMessage(messages.importPrompt) }}</span>
-			<Button size="lg" class="!font-medium" :disabled="offline" @click="showImportModal?.()">
+			<Button size="lg" class="!font-medium" @click="showImportModal?.()">
 				<ImportIcon />
 				{{ formatMessage(messages.importFromLauncher) }}
 			</Button>

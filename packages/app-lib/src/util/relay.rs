@@ -92,6 +92,8 @@ pub fn route_url_with_base(url: &str, relay_base: &str) -> String {
 		("http://cdn.modrinth.com", "/cdn"),
 		("https://launcher-meta.modrinth.com", "/launcher-meta"),
 		("http://launcher-meta.modrinth.com", "/launcher-meta"),
+		("https://launcher-files.modrinth.com", "/launcher-files"),
+		("http://launcher-files.modrinth.com", "/launcher-files"),
 		("https://piston-meta.mojang.com", "/piston-meta"),
 		("http://piston-meta.mojang.com", "/piston-meta"),
 		("https://piston-data.mojang.com", "/piston-data"),

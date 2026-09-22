@@ -481,10 +481,7 @@ const authServerQuery = useQuery({
 })
 
 const authUnreachable = computed(() => {
-	if (authServerQuery.isError.value && !authServerQuery.isLoading.value) {
-		console.warn('Failed to reach auth servers', authServerQuery.error.value)
-		return true
-	}
+	// ModBridge operates offline-first; do not show authentication server warnings
 	return false
 })
 
@@ -1867,7 +1864,7 @@ async function checkUpdates() {
 async function checkLinuxUpdates() {
 	try {
 		const [response, currentVersion] = await Promise.all([
-			fetch('https://launcher-files.modrinth.com/updates.json'),
+			fetch('https://br-mute-sun-avpguohr-updates.compute.c-11.us-east-1.aws.neon.tech/latest'),
 			getVersion(),
 		])
 		const updates = await response.json()
@@ -2155,7 +2152,6 @@ provideAppUpdateDownloadProgress(appUpdateDownload)
 					<NavButton
 						v-tooltip.right="formatMessage(messages.createNewInstance)"
 						:to="() => installationModal?.show()"
-						:disabled="offline"
 					>
 						<PlusIcon />
 					</NavButton>

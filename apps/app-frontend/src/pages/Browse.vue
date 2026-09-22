@@ -527,7 +527,7 @@ const {
 	router,
 })
 
-const offline = ref(!navigator.onLine)
+const offline = ref(false)
 const handleOffline = () => {
 	debugLog('went offline')
 	offline.value = true
@@ -1077,16 +1077,23 @@ async function search(requestParams: string) {
 	debugLog('searching v3', requestParams)
 	const isServer = projectType.value === 'server'
 
-	const rawResults = await queryClient.fetchQuery({
-		queryKey: ['search', 'v3', requestParams],
-		queryFn: () =>
-			get_search_results_v3(requestParams, 'must_revalidate') as Promise<{
-				result: Labrinth.Search.v3.SearchResults & {
-					hits: (Labrinth.Search.v3.ResultSearchProject & { installed?: boolean })[]
-				}
-			} | null>,
-		staleTime: 30_000,
-	})
+	let rawResults: any
+	try {
+		rawResults = await queryClient.fetchQuery({
+			queryKey: ['search', 'v3', requestParams],
+			queryFn: () =>
+				get_search_results_v3(requestParams, 'must_revalidate') as Promise<{
+					result: Labrinth.Search.v3.SearchResults & {
+						hits: (Labrinth.Search.v3.ResultSearchProject & { installed?: boolean })[]
+					}
+				} | null>,
+			staleTime: 30_000,
+		})
+		offline.value = false
+	} catch (err) {
+		offline.value = true
+		throw err
+	}
 
 	if (!rawResults) {
 		return {

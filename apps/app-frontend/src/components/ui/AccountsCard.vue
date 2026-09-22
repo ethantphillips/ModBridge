@@ -62,7 +62,7 @@
 					:src="
 						selectedAccount
 							? avatarUrl
-							: 'https://launcher-files.modrinth.com/assets/steve_head.png'
+							: 'https://br-mute-sun-avpguohr-relay.compute.c-11.us-east-1.aws.neon.tech/launcher-files/assets/steve_head.png'
 					"
 				/>
 				<div class="flex flex-col items-start w-full min-w-0">
@@ -366,7 +366,7 @@ const avatarUrl = computed(() => {
 	if (selectedAccount.value?.profile?.id) {
 		return `https://mc-heads.net/avatar/${selectedAccount.value.profile.id}/128`
 	}
-	return 'https://launcher-files.modrinth.com/assets/steve_head.png'
+	return 'https://br-mute-sun-avpguohr-relay.compute.c-11.us-east-1.aws.neon.tech/launcher-files/assets/steve_head.png'
 })
 
 function getAccountAvatarUrl(account: MinecraftCredential) {

@@ -5,6 +5,7 @@ export const ALLOWED_UPSTREAM_HOSTS = new Set([
 	'cdn.modrinth.com',
 	'staging-cdn.modrinth.com',
 	'launcher-meta.modrinth.com',
+	'launcher-files.modrinth.com',
 	'piston-meta.mojang.com',
 	'piston-data.mojang.com',
 	'resources.download.minecraft.net',
@@ -72,6 +73,14 @@ export const ROUTE_MAPPINGS: RouteMapping[] = [
 			upstreamPrefix: '',
 			category: 'modrinth-cdn',
 			enableRewrite: true,
+		},
+	},
+	{
+		prefix: '/launcher-files',
+		target: {
+			upstreamHost: 'launcher-files.modrinth.com',
+			upstreamPrefix: '',
+			category: 'modrinth-cdn',
 		},
 	},
 	{

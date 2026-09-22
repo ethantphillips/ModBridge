@@ -102,8 +102,8 @@
 			"capabilities": ["core", "plugins"],
 			"csp": {
 				"default-src": "'self' customprotocol: asset:",
-				"connect-src": "ipc: http://ipc.localhost https://*.neon.tech https://*.aws.neon.tech https://api.mclo.gs https://fill.papermc.io https://api.purpurmc.org 'self' data: blob:",
-				"font-src": ["https://*.neon.tech", "https://*.aws.neon.tech"],
+				"connect-src": "ipc: http://ipc.localhost https://br-mute-sun-avpguohr-relay.compute.c-11.us-east-1.aws.neon.tech https://br-mute-sun-avpguohr-updates.compute.c-11.us-east-1.aws.neon.tech wss://br-mute-sun-avpguohr-relay.compute.c-11.us-east-1.aws.neon.tech https://*.compute.c-11.us-east-1.aws.neon.tech https://*.neon.tech https://*.aws.neon.tech https://api.mclo.gs https://fill.papermc.io https://api.purpurmc.org https://github.com https://*.github.com https://*.githubusercontent.com 'self' data: blob:",
+				"font-src": ["https://br-mute-sun-avpguohr-relay.compute.c-11.us-east-1.aws.neon.tech", "https://*.neon.tech", "https://*.aws.neon.tech"],
 				"img-src": "https: 'unsafe-inline' 'self' asset: http://asset.localhost blob: data:",
 				"style-src": "'unsafe-inline' 'self'",
 				"script-src": "https://js.stripe.com https://widget.intercom.io https://js.intercomcdn.com https://tally.so/widgets/embed.js 'self'",

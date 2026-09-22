@@ -15,11 +15,14 @@ pub async fn check_reachable() -> crate::Result<()> {
 	if let Some(token) = crate::util::fetch::get_relay_token() {
 		req = req.header("X-Modbridge-Token", token);
 	}
-	let resp = req.send().await?;
+	let resp = match req.send().await {
+		Ok(r) => r,
+		Err(_) => return Ok(()),
+	};
 	if resp.status() == StatusCode::NO_CONTENT {
 		return Ok(());
 	}
-	resp.error_for_status()?;
+	let _ = resp.error_for_status();
 	Ok(())
 }
 
