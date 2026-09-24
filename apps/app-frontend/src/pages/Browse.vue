@@ -528,21 +528,6 @@ const {
 })
 
 const offline = ref(false)
-const handleOffline = () => {
-	debugLog('went offline')
-	offline.value = true
-}
-const handleOnline = () => {
-	debugLog('went online')
-	offline.value = false
-}
-window.addEventListener('offline', handleOffline)
-window.addEventListener('online', handleOnline)
-
-onBeforeUnmount(() => {
-	window.removeEventListener('offline', handleOffline)
-	window.removeEventListener('online', handleOnline)
-})
 
 const messages = defineMessages({
 	addServersToInstance: {
@@ -1089,9 +1074,7 @@ async function search(requestParams: string) {
 				} | null>,
 			staleTime: 30_000,
 		})
-		offline.value = false
 	} catch (err) {
-		offline.value = true
 		throw err
 	}
 

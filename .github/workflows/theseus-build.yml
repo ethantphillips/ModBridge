@@ -146,6 +146,40 @@ jobs:
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_KEY_PASSWORD }}
 
+      - name: Package portable version
+        run: |
+          mkdir -p dist/ModBridge-Portable/data
+          EXE_PATH=""
+          for f in target/x86_64-pc-windows-msvc/release/ModBridge*.exe target/release/ModBridge*.exe; do
+            if [ -f "$f" ]; then
+              EXE_PATH="$f"
+              break
+            fi
+          done
+          if [ -z "$EXE_PATH" ]; then
+            echo "Error: ModBridge executable not found!"
+            exit 1
+          fi
+          echo "Found ModBridge executable at: $EXE_PATH"
+          cp "$EXE_PATH" dist/ModBridge-Portable/ModBridge.exe
+          touch dist/ModBridge-Portable/.portable
+          cat << 'EOF' > dist/ModBridge-Portable/portable.txt
+ModBridge 100% Portable Mode
+=============================
+All profiles, instances, game assets, caches, settings database, logs, and WebView2 data
+are isolated inside the adjacent 'data' folder.
+
+No files will be written to %APPDATA%, %LOCALAPPDATA%, or the Windows registry.
+You can move this folder to any directory, external drive, or USB stick and run ModBridge.exe directly.
+EOF
+          (cd dist && zip -r ModBridge-Windows-Portable.zip ModBridge-Portable/)
+
+      - name: Upload portable app
+        uses: actions/upload-artifact@v4
+        with:
+          name: ModBridge-Windows-Portable
+          path: dist/ModBridge-Windows-Portable.zip
+
       - name: Upload app bundles
         uses: actions/upload-artifact@v4
         with:

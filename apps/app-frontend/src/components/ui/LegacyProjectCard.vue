@@ -68,7 +68,7 @@ const toTransparent = computed(() => {
 				'background-image': `url(${
 					project.featured_gallery ??
 					project.gallery[0] ??
-					'https://launcher-files.modrinth.com/assets/maze-bg.png'
+					'https://br-mute-sun-avpguohr-relay.compute.c-11.us-east-1.aws.neon.tech/launcher-files/assets/maze-bg.png'
 				})`,
 			}"
 		>

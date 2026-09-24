@@ -215,7 +215,7 @@ const client = injectModrinthClient()
 const appSettings = useAppSettings()
 const skins = ref<Skin[]>([])
 const capes = ref<Cape[]>([])
-const offline = ref(!navigator.onLine)
+const offline = ref(false)
 
 const accountsCard = inject('accountsCard') as Ref<typeof AccountsCard>
 const currentUser = ref(undefined)
@@ -1004,16 +1004,12 @@ watch(isSkinManagementReadOnly, (readOnly) => {
 })
 
 onMounted(() => {
-	window.addEventListener('offline', onOffline)
-	window.addEventListener('online', onOnline)
 	userCheckInterval = window.setInterval(checkUserChanges, 250)
 	void setupAddSkinDragDropListener()
 })
 
 onUnmounted(() => {
 	isUnmounted = true
-	window.removeEventListener('offline', onOffline)
-	window.removeEventListener('online', onOnline)
 
 	if (userCheckInterval !== null) {
 		window.clearInterval(userCheckInterval)
@@ -1031,7 +1027,7 @@ onUnmounted(() => {
 })
 
 function onOffline() {
-	offline.value = true
+	offline.value = false
 }
 
 function onOnline() {

@@ -115,6 +115,50 @@ async fn set_restart_after_pending_update(
 // if Tauri app is called with arguments, then those arguments will be treated as commands
 // ie: deep links or filepaths for .mrpacks
 fn main() {
+	// 100% Portable Mode Initialization
+	let is_portable_flag = std::env::args().any(|arg| arg == "--portable" || arg == "-p");
+	let is_portable_env = std::env::var("MODBRIDGE_PORTABLE")
+		.map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
+		.unwrap_or(false);
+	let is_portable_marker = std::env::current_exe()
+		.ok()
+		.and_then(|p| {
+			p.parent().map(|d| {
+				d.join(".portable").exists()
+					|| d.join("portable.txt").exists()
+					|| d.join("portable_data").is_dir()
+			})
+		})
+		.unwrap_or(false);
+
+	if is_portable_flag || is_portable_env || is_portable_marker {
+		if let Ok(exe_path) = std::env::current_exe() {
+			if let Some(exe_dir) = exe_path.parent() {
+				let data_dir = if exe_dir.join("portable_data").is_dir() {
+					exe_dir.join("portable_data")
+				} else {
+					exe_dir.join("data")
+				};
+				let _ = std::fs::create_dir_all(&data_dir);
+				let _ = std::fs::create_dir_all(data_dir.join("webview"));
+				let _ = std::fs::create_dir_all(data_dir.join("backups").join("app-db"));
+
+				std::env::set_var("MODBRIDGE_PORTABLE", "1");
+				std::env::set_var("MODBRIDGE_CONFIG_DIR", &data_dir);
+				std::env::set_var("THESEUS_CONFIG_DIR", &data_dir);
+				std::env::set_var(
+					"THESEUS_DB_BACKUP_DIR",
+					data_dir.join("backups").join("app-db"),
+				);
+
+				#[cfg(target_os = "windows")]
+				{
+					// Ensure WebView2 runtime isolates all user data into the portable directory
+					std::env::set_var("WEBVIEW2_USER_DATA_FOLDER", data_dir.join("webview"));
+				}
+			}
+		}
+	}
     #[cfg(feature = "export-app-events")]
     theseus::export_app_event_bindings(
         std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))

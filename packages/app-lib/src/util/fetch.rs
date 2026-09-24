@@ -1002,10 +1002,15 @@ async fn fetch_advanced_with_target(
 		if (target_url.contains("modrinth.com") || target_url.contains("mojang.com") || target_url.contains("minecraft.net"))
 			&& !target_url.starts_with(get_relay_base_url())
 		{
-			panic!(
+			tracing::error!(
 				"CRITICAL SECURITY VIOLATION: Direct connection to {} is strictly forbidden! Must be routed through ModBridge Relay.",
 				target_url
 			);
+			return Err(ErrorKind::OtherError(format!(
+				"CRITICAL SECURITY VIOLATION: Direct connection to {} is strictly forbidden! Must be routed through ModBridge Relay.",
+				target_url
+			))
+			.into());
 		}
 
 		let mut req = client.request(method.clone(), &target_url);

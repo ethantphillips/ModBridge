@@ -280,18 +280,7 @@ const refresh = async () => {
 
 await refresh()
 
-const offline = ref(!navigator.onLine)
-function handleOffline() {
-	offline.value = true
-}
-function handleOnline() {
-	offline.value = false
-}
-
-onMounted(() => {
-	window.addEventListener('offline', handleOffline)
-	window.addEventListener('online', handleOnline)
-})
+const offline = ref(false)
 
 useAppEvent('process', async () => {
 	await refresh()

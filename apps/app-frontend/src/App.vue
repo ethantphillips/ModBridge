@@ -423,13 +423,7 @@ const serverInvitePopupNotificationIds = new Set()
 let liveNotificationGeneration = 0
 let liveNotificationsEnabled = true
 
-const offline = ref(!navigator.onLine)
-window.addEventListener('offline', () => {
-	offline.value = true
-})
-window.addEventListener('online', () => {
-	offline.value = false
-})
+const offline = ref(false)
 
 const os = ref('')
 const isDevEnvironment = ref(false)

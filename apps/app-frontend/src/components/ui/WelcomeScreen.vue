@@ -43,15 +43,7 @@ const messages = defineMessages({
 	},
 })
 
-const offline = ref(!navigator.onLine)
-
-function handleOffline() {
-	offline.value = true
-}
-
-function handleOnline() {
-	offline.value = false
-}
+const offline = ref(false)
 
 function handleQuickCreate(event: KeyboardEvent) {
 	const target = event.target as HTMLElement | null
@@ -72,14 +64,10 @@ function handleQuickCreate(event: KeyboardEvent) {
 }
 
 onMounted(() => {
-	window.addEventListener('offline', handleOffline)
-	window.addEventListener('online', handleOnline)
 	window.addEventListener('keydown', handleQuickCreate)
 })
 
 onUnmounted(() => {
-	window.removeEventListener('offline', handleOffline)
-	window.removeEventListener('online', handleOnline)
 	window.removeEventListener('keydown', handleQuickCreate)
 })
 </script>

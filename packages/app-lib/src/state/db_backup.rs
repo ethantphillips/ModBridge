@@ -124,18 +124,28 @@ async fn open_read_only_db(db_path: &Path) -> crate::Result<SqliteConnection> {
 }
 
 pub fn app_db_backup_dir() -> crate::Result<PathBuf> {
-    if let Some(path) = std::env::var_os("THESEUS_DB_BACKUP_DIR") {
-        return Ok(PathBuf::from(path));
-    }
+	if let Some(path) = std::env::var_os("THESEUS_DB_BACKUP_DIR") {
+		return Ok(PathBuf::from(path));
+	}
+	if let Some(path) = std::env::var_os("MODBRIDGE_CONFIG_DIR")
+		.or_else(|| std::env::var_os("THESEUS_CONFIG_DIR"))
+	{
+		return Ok(PathBuf::from(path).join("backups").join("app-db"));
+	}
+	if crate::state::dirs::DirectoryInfo::is_portable() {
+		if let Some(p) = crate::state::dirs::DirectoryInfo::portable_data_dir() {
+			return Ok(p.join("backups").join("app-db"));
+		}
+	}
 
-    let base = dirs::data_local_dir().or_else(dirs::data_dir).ok_or(
-        crate::ErrorKind::FSError(
-            "Could not find valid data dir for app database backups"
-                .to_string(),
-        ),
-    )?;
+	let base = dirs::data_local_dir().or_else(dirs::data_dir).ok_or(
+		crate::ErrorKind::FSError(
+			"Could not find valid data dir for app database backups"
+				.to_string(),
+		),
+	)?;
 
-    Ok(base.join("Modrinth").join("Backups").join("app-db"))
+	Ok(base.join("Modrinth").join("Backups").join("app-db"))
 }
 
 async fn has_user_tables(conn: &mut SqliteConnection) -> crate::Result<bool> {

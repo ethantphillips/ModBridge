@@ -31,13 +31,53 @@ impl DirectoryInfo {
         Self::initial_settings_dir_path(&self.app_identifier)
     }
 
-    // Get the settings directory
-    // init() is not needed for this function
-    pub fn initial_settings_dir_path(app_identifier: &str) -> Option<PathBuf> {
-        Self::env_path("MODBRIDGE_CONFIG_DIR")
-            .or_else(|| Self::env_path("THESEUS_CONFIG_DIR"))
-            .or_else(|| Some(dirs::data_dir()?.join(app_identifier)))
-    }
+	pub fn is_portable() -> bool {
+		if let Ok(val) = std::env::var("MODBRIDGE_PORTABLE") {
+			if val == "1" || val.eq_ignore_ascii_case("true") {
+				return true;
+			}
+		}
+		if let Ok(exe_path) = std::env::current_exe() {
+			if let Some(exe_dir) = exe_path.parent() {
+				if exe_dir.join(".portable").exists()
+					|| exe_dir.join("portable.txt").exists()
+					|| exe_dir.join("portable_data").is_dir()
+				{
+					return true;
+				}
+			}
+		}
+		false
+	}
+
+	pub fn portable_data_dir() -> Option<PathBuf> {
+		if let Ok(val) = std::env::var("MODBRIDGE_PORTABLE_DIR") {
+			let p = PathBuf::from(val);
+			return Some(p);
+		}
+		if let Ok(exe_path) = std::env::current_exe() {
+			if let Some(exe_dir) = exe_path.parent() {
+				if exe_dir.join("portable_data").is_dir() {
+					return Some(exe_dir.join("portable_data"));
+				}
+				return Some(exe_dir.join("data"));
+			}
+		}
+		None
+	}
+
+	// Get the settings directory
+	// init() is not needed for this function
+	pub fn initial_settings_dir_path(app_identifier: &str) -> Option<PathBuf> {
+		if Self::is_portable() {
+			if let Some(p) = Self::portable_data_dir() {
+				return Some(p);
+			}
+		}
+		Self::env_path("MODBRIDGE_CONFIG_DIR")
+			.or_else(|| Self::env_path("THESEUS_CONFIG_DIR"))
+			.or_else(|| Some(dirs::data_dir()?.join(app_identifier)))
+	}
 
     /// Get all paths needed for ModBridge to operate properly
     #[tracing::instrument]

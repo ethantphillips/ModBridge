@@ -109,7 +109,6 @@ import {
 	useVIntl,
 } from '@modrinth/ui'
 import { useQuery, useQueryClient } from '@tanstack/vue-query'
-import { useOnline } from '@vueuse/core'
 import dayjs from 'dayjs'
 import relativeTime from 'dayjs/plugin/relativeTime'
 import { computed, type ComputedRef, onUnmounted, ref, shallowRef, watch } from 'vue'
@@ -216,8 +215,8 @@ watch(
 const appSettings = useAppSettings()
 const showInstancePlayTime = computed(() => appSettings.getFeatureFlag('show_instance_play_time'))
 
-const online = useOnline()
-const offline = computed(() => !online.value)
+const online = ref(true)
+const offline = computed(() => false)
 const instanceId = computed(() => String(displayedInstanceRoute.value.params.id ?? ''))
 const instanceQuery = useQuery(
 	computed(() => ({
