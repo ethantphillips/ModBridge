@@ -163,15 +163,10 @@ jobs:
           echo "Found ModBridge executable at: $EXE_PATH"
           cp "$EXE_PATH" dist/ModBridge-Portable/ModBridge.exe
           touch dist/ModBridge-Portable/.portable
-          cat << 'EOF' > dist/ModBridge-Portable/portable.txt
-ModBridge 100% Portable Mode
-=============================
-All profiles, instances, game assets, caches, settings database, logs, and WebView2 data
-are isolated inside the adjacent 'data' folder.
-
-No files will be written to %APPDATA%, %LOCALAPPDATA%, or the Windows registry.
-You can move this folder to any directory, external drive, or USB stick and run ModBridge.exe directly.
-EOF
+          echo "ModBridge 100% Portable Mode" > dist/ModBridge-Portable/portable.txt
+          echo "All profiles, instances, game assets, caches, settings database, logs, and WebView2 data" >> dist/ModBridge-Portable/portable.txt
+          echo "are isolated inside the adjacent data folder." >> dist/ModBridge-Portable/portable.txt
+          echo "No files will be written to %APPDATA%, %LOCALAPPDATA%, or the Windows registry." >> dist/ModBridge-Portable/portable.txt
           (cd dist && zip -r ModBridge-Windows-Portable.zip ModBridge-Portable/)
 
       - name: Upload portable app
