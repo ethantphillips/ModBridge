@@ -143,18 +143,20 @@ fn main() {
 				let _ = std::fs::create_dir_all(data_dir.join("webview"));
 				let _ = std::fs::create_dir_all(data_dir.join("backups").join("app-db"));
 
-				std::env::set_var("MODBRIDGE_PORTABLE", "1");
-				std::env::set_var("MODBRIDGE_CONFIG_DIR", &data_dir);
-				std::env::set_var("THESEUS_CONFIG_DIR", &data_dir);
-				std::env::set_var(
-					"THESEUS_DB_BACKUP_DIR",
-					data_dir.join("backups").join("app-db"),
-				);
+				unsafe {
+					std::env::set_var("MODBRIDGE_PORTABLE", "1");
+					std::env::set_var("MODBRIDGE_CONFIG_DIR", &data_dir);
+					std::env::set_var("THESEUS_CONFIG_DIR", &data_dir);
+					std::env::set_var(
+						"THESEUS_DB_BACKUP_DIR",
+						data_dir.join("backups").join("app-db"),
+					);
 
-				#[cfg(target_os = "windows")]
-				{
-					// Ensure WebView2 runtime isolates all user data into the portable directory
-					std::env::set_var("WEBVIEW2_USER_DATA_FOLDER", data_dir.join("webview"));
+					#[cfg(target_os = "windows")]
+					{
+						// Ensure WebView2 runtime isolates all user data into the portable directory
+						std::env::set_var("WEBVIEW2_USER_DATA_FOLDER", data_dir.join("webview"));
+					}
 				}
 			}
 		}
