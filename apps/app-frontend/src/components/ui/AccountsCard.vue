@@ -34,20 +34,6 @@
 				{{ formatMessage(messages.createOfflineProfile) }}
 			</Button>
 		</div>
-		<div class="flex items-center gap-2">
-			<hr class="flex-grow border-0 border-t border-solid border-surface-5 my-0" />
-			<span class="text-secondary text-xs">or</span>
-			<hr class="flex-grow border-0 border-t border-solid border-surface-5 my-0" />
-		</div>
-		<Button
-			class="w-full !bg-button-bg !text-primary ![box-shadow:var(--shadow-button)]"
-			:disabled="loginDisabled"
-			@click="login()"
-		>
-			<LogInIcon v-if="!loginDisabled" />
-			<SpinnerIcon v-else class="animate-spin" />
-			{{ formatMessage(messages.signInWithMicrosoft) }}
-		</Button>
 	</div>
 	<Accordion
 		v-else
@@ -62,7 +48,7 @@
 					:src="
 						selectedAccount
 							? avatarUrl
-							: 'https://br-mute-sun-avpguohr-relay.compute.c-11.us-east-1.aws.neon.tech/launcher-files/assets/steve_head.png'
+							: defaultAvatarUrl
 					"
 				/>
 				<div class="flex flex-col items-start w-full min-w-0">
@@ -72,14 +58,9 @@
 						}}</span>
 						<span
 							v-if="selectedAccount"
-							class="text-[10px] px-1.5 py-0.5 rounded font-medium shrink-0"
-							:class="
-								isAccountOffline(selectedAccount)
-									? 'bg-brand/20 text-brand'
-									: 'bg-surface-4 text-secondary'
-							"
+							class="text-[10px] px-1.5 py-0.5 rounded font-medium shrink-0 bg-brand/20 text-brand"
 						>
-							{{ isAccountOffline(selectedAccount) ? 'Offline' : 'Microsoft' }}
+							Offline
 						</span>
 					</div>
 					<span class="text-secondary text-xs">{{ formatMessage(messages.minecraftAccount) }}</span>
@@ -110,14 +91,9 @@
 							{{ account.profile.name }}
 						</p>
 						<span
-							class="text-[10px] px-1.5 py-0.5 rounded font-medium shrink-0 ml-auto mr-1"
-							:class="
-								isAccountOffline(account)
-									? 'bg-brand/20 text-brand'
-									: 'bg-surface-4 text-secondary'
-							"
+							class="text-[10px] px-1.5 py-0.5 rounded font-medium shrink-0 ml-auto mr-1 bg-brand/20 text-brand"
 						>
-							{{ isAccountOffline(account) ? 'Offline' : 'Microsoft' }}
+							Offline
 						</span>
 					</button>
 					<IconButton
@@ -139,14 +115,6 @@
 				>
 					<PlusIcon />
 					{{ formatMessage(messages.addOfflineAccount) }}
-				</Button>
-				<Button
-					class="w-full !bg-button-bg !text-primary ![box-shadow:var(--shadow-button)]"
-					:disabled="loginDisabled"
-					@click="login()"
-				>
-					<LogInIcon />
-					{{ formatMessage(messages.signInWithMicrosoft) }}
 				</Button>
 			</div>
 			<div
@@ -195,7 +163,6 @@
 <script setup lang="ts">
 import {
 	LockIcon,
-	LogInIcon,
 	PlusIcon,
 	RadioButtonCheckedIcon,
 	RadioButtonIcon,
@@ -216,13 +183,12 @@ import {
 import type { Ref } from 'vue'
 import { computed, onUnmounted, ref } from 'vue'
 
+import { config } from '@/config'
 import { useAppEvent } from '@/composables/use-app-event'
-import { handleSevereError } from '@/composables/use-error.js'
 import { trackEvent } from '@/helpers/analytics'
 import {
 	add_offline_user,
 	get_default_user,
-	login as login_flow,
 	remove_user,
 	set_default_user,
 	users,
@@ -355,6 +321,8 @@ const selectedAccount = computed(() =>
 	accounts.value.find((account) => account.profile.id === defaultUser.value),
 )
 
+const defaultAvatarUrl = `${config.relayBaseUrl}/launcher-files/assets/steve_head.png`
+
 const avatarUrl = computed(() => {
 	if (equippedSkin.value?.texture_key) {
 		const cachedUrl = equippedHeadUrl.value
@@ -366,7 +334,7 @@ const avatarUrl = computed(() => {
 	if (selectedAccount.value?.profile?.id) {
 		return `https://mc-heads.net/avatar/${selectedAccount.value.profile.id}/128`
 	}
-	return 'https://br-mute-sun-avpguohr-relay.compute.c-11.us-east-1.aws.neon.tech/launcher-files/assets/steve_head.png'
+	return defaultAvatarUrl
 })
 
 function getAccountAvatarUrl(account: MinecraftCredential) {
@@ -390,15 +358,7 @@ async function setAccount(account: MinecraftCredential) {
 }
 
 async function login() {
-	loginDisabled.value = true
-	const loggedIn = await login_flow().catch(handleSevereError)
-
-	if (loggedIn) {
-		await setAccount(loggedIn)
-	}
-
-	trackEvent('AccountLogIn')
-	loginDisabled.value = false
+	showAddOfflineForm.value = true
 }
 
 async function logout(id: string) {
@@ -470,10 +430,6 @@ const messages = defineMessages({
 	pinPlaceholder: {
 		id: 'minecraft-account.pin-placeholder',
 		defaultMessage: 'Identity PIN (e.g. 1234)',
-	},
-	signInWithMicrosoft: {
-		id: 'minecraft-account.sign-in-microsoft',
-		defaultMessage: 'Sign in with Microsoft',
 	},
 })
 </script>

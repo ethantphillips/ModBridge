@@ -1858,7 +1858,7 @@ async function checkUpdates() {
 async function checkLinuxUpdates() {
 	try {
 		const [response, currentVersion] = await Promise.all([
-			fetch('https://br-mute-sun-avpguohr-updates.compute.c-11.us-east-1.aws.neon.tech/latest'),
+			fetch('https://br-divine-snow-ahjav8i1-updates.compute.c-3.us-east-1.aws.neon.tech/latest'),
 			getVersion(),
 		])
 		const updates = await response.json()

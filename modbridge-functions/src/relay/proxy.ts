@@ -84,6 +84,7 @@ export async function executeProxy(options: ProxyRequestOptions): Promise<Respon
 			const jsonText = await upstreamResponse.text()
 			const rewrittenJson = rewriteJsonContent(jsonText, relayOrigin)
 
+			responseHeaders.delete('content-encoding')
 			responseHeaders.set('content-length', String(new TextEncoder().encode(rewrittenJson).byteLength))
 			return new Response(rewrittenJson, {
 				status: upstreamResponse.status,

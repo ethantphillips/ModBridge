@@ -40,6 +40,7 @@ import { openUrl } from '@tauri-apps/plugin-opener'
 import { computed, ref } from 'vue'
 
 import { trackEvent } from '@/helpers/analytics'
+import { config } from '@/config'
 
 const MC_SERVER_BANNER_NAME = '__mc_server_banner__'
 
@@ -64,7 +65,7 @@ const galleryViewer = ref()
 const galleryViewerItems = computed(() =>
 	filteredGallery.value.map((image) => ({
 		id: image.url,
-		src: image.raw_url ?? 'https://br-mute-sun-avpguohr-relay.compute.c-11.us-east-1.aws.neon.tech/cdn/placeholder-banner.svg',
+		src: image.raw_url ?? `${config.relayBaseUrl}/cdn/placeholder-banner.svg`,
 		alt: image.title || 'Gallery image',
 		title: image.title,
 		description: image.description,

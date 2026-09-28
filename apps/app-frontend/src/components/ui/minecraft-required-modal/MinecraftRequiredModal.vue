@@ -21,51 +21,25 @@
 
 		<div class="flex flex-col gap-6 px-6 pb-6">
 			<div class="grid grid-cols-2 gap-2">
-				<ButtonLink href="https://support.modrinth.com" @click="modal?.hide()">
-					<MessagesSquareIcon />
-					{{ formatMessage(messages.getSupport) }}
-				</ButtonLink>
-				<Button type="colored" color="brand" :disabled="loadingSignIn" @click="signIn">
-					<SpinnerIcon v-if="loadingSignIn" class="animate-spin" />
-					<svg
-						v-else
-						width="20"
-						height="20"
-						viewBox="0 0 20 20"
-						fill="none"
-						xmlns="http://www.w3.org/2000/svg"
-					>
-						<rect width="9.25" height="9.25" fill="black" fill-opacity="0.9" />
-						<rect x="10.75" width="9.25" height="9.25" fill="black" fill-opacity="0.9" />
-						<rect y="10.75" width="9.25" height="9.25" fill="black" fill-opacity="0.9" />
-						<rect x="10.75" y="10.75" width="9.25" height="9.25" fill="black" fill-opacity="0.9" />
-					</svg>
-					{{ formatMessage(messages.signIn) }}
+				<Button @click="modal?.hide()">
+					{{ formatMessage(messages.close) }}
+				</Button>
+				<Button type="colored" color="brand" @click="createAccount">
+					<PlusIcon />
+					{{ formatMessage(messages.addAccount) }}
 				</Button>
 			</div>
-			<p class="m-0 text-center text-sm text-secondary">
-				{{ formatMessage(messages.dontHaveAccount) }}
-				<a
-					class="text-blue font-medium hover:underline"
-					href="https://www.minecraft.net/en-us/store/minecraft-java-bedrock-edition-pc"
-				>
-					{{ formatMessage(messages.getMinecraft) }}
-				</a>
-			</p>
 		</div>
 	</NewModal>
 </template>
 
 <script setup lang="ts">
-import { MessagesSquareIcon, SpinnerIcon } from '@modrinth/assets'
-import { Button, ButtonLink, defineMessages, NewModal, useVIntl } from '@modrinth/ui'
+import { PlusIcon } from '@modrinth/assets'
+import { Button, defineMessages, NewModal, useVIntl } from '@modrinth/ui'
 import { inject, type Ref, ref } from 'vue'
 
 import steveImage from '@/assets/steve-look-up-left.webp'
 import type AccountsCard from '@/components/ui/AccountsCard.vue'
-import { handleSevereError } from '@/composables/use-error.js'
-import { trackEvent } from '@/helpers/analytics'
-import { login as loginFlow, set_default_user } from '@/helpers/auth.js'
 
 const { formatMessage } = useVIntl()
 const accountsCard = inject('accountsCard') as Ref<InstanceType<typeof AccountsCard> | null>
@@ -73,58 +47,38 @@ const accountsCard = inject('accountsCard') as Ref<InstanceType<typeof AccountsC
 const messages = defineMessages({
 	header: {
 		id: 'minecraft-required.header',
-		defaultMessage: 'Minecraft required',
+		defaultMessage: 'Account required',
 	},
 	descriptionHeader: {
 		id: 'minecraft-required.description-header',
-		defaultMessage: 'Sign in to a Microsoft account',
+		defaultMessage: 'Select or create an account',
 	},
 	description: {
 		id: 'minecraft-required.description',
 		defaultMessage:
-			'You need a Microsoft account that owns Minecraft before you can launch and play.',
+			'An offline profile is required before you can launch and play.',
 	},
-	getSupport: {
-		id: 'minecraft-required.get-support',
-		defaultMessage: 'Get support',
+	close: {
+		id: 'minecraft-required.close',
+		defaultMessage: 'Close',
 	},
-	signIn: {
-		id: 'minecraft-required.sign-in',
-		defaultMessage: 'Sign in to Microsoft',
-	},
-	dontHaveAccount: {
-		id: 'minecraft-required.dont-have-account',
-		defaultMessage: 'Don’t have an account?',
-	},
-	getMinecraft: {
-		id: 'minecraft-required.get-minecraft',
-		defaultMessage: 'Get Minecraft',
+	addAccount: {
+		id: 'minecraft-required.add-account',
+		defaultMessage: 'Add Profile',
 	},
 })
 
 const modal = ref<InstanceType<typeof NewModal>>()
-const loadingSignIn = ref(false)
 
 function show() {
 	modal.value?.show()
 }
 
-async function signIn() {
-	loadingSignIn.value = true
-
-	try {
-		const loggedIn = await loginFlow()
-		if (!loggedIn) return
-
-		await set_default_user(loggedIn.profile.id)
-		await accountsCard.value?.refreshValues()
-		await trackEvent('AccountLogIn', { source: 'MinecraftRequiredModal' })
-		modal.value?.hide()
-	} catch (error) {
-		handleSevereError(error)
-	} finally {
-		loadingSignIn.value = false
+async function createAccount() {
+	if (accountsCard.value) {
+		await accountsCard.value.login()
 	}
+	modal.value?.hide()
 }
 
 defineExpose({

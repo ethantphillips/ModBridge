@@ -108,4 +108,40 @@ describe('Proxy Execution & Streaming', () => {
 
 		vi.unstubAllGlobals()
 	})
+
+	it('strips content-encoding and updates content-length on rewritten JSON responses', async () => {
+		const jsonPayload = JSON.stringify([{ name: 'fabric', icon: 'svg' }])
+		const mockResponse = new Response(jsonPayload, {
+			status: 200,
+			headers: {
+				'Content-Type': 'application/json; charset=utf-8',
+				'Content-Encoding': 'gzip',
+				'Content-Length': '42',
+			},
+		})
+
+		vi.stubGlobal('fetch', vi.fn().mockResolvedValue(mockResponse))
+
+		const response = await executeProxy({
+			target: {
+				upstreamHost: 'api.modrinth.com',
+				upstreamPrefix: '',
+				category: 'modrinth-api',
+				enableRewrite: true,
+			},
+			subpath: '/v2/tag/loader',
+			searchParams: new URLSearchParams(),
+			method: 'GET',
+			headers: new Headers(),
+			relayOrigin: 'https://relay.modbridge.internal',
+		})
+
+		expect(response.status).toBe(200)
+		expect(response.headers.get('content-encoding')).toBeNull()
+		expect(response.headers.get('content-length')).toBe(String(new TextEncoder().encode(jsonPayload).byteLength))
+		const text = await response.text()
+		expect(text).toBe(jsonPayload)
+
+		vi.unstubAllGlobals()
+	})
 })

@@ -8,6 +8,7 @@ const HOP_BY_HOP_HEADERS = new Set([
 	'transfer-encoding',
 	'upgrade',
 	'host',
+	'content-encoding',
 ])
 
 export function sanitizeRequestHeaders(headers: Headers, upstreamHost: string): Headers {
@@ -27,10 +28,14 @@ export function sanitizeRequestHeaders(headers: Headers, upstreamHost: string): 
 
 export function sanitizeResponseHeaders(headers: Headers, allowCors = true): Headers {
 	const sanitized = new Headers()
+	const hadContentEncoding = headers.has('content-encoding')
 
 	for (const [key, value] of headers.entries()) {
 		const lowerKey = key.toLowerCase()
 		if (HOP_BY_HOP_HEADERS.has(lowerKey)) {
+			continue
+		}
+		if (hadContentEncoding && lowerKey === 'content-length') {
 			continue
 		}
 		sanitized.set(key, value)

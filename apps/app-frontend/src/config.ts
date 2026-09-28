@@ -1,6 +1,6 @@
 const trimTrailingSlash = (url: string) => url.replace(/\/$/, '')
 
-const DEFAULT_RELAY_URL = 'https://br-mute-sun-avpguohr-relay.compute.c-11.us-east-1.aws.neon.tech'
+const DEFAULT_RELAY_URL = 'https://br-divine-snow-ahjav8i1-relay.compute.c-3.us-east-1.aws.neon.tech'
 
 const relayBaseUrl = trimTrailingSlash(
 	import.meta.env.MODBRIDGE_RELAY_BASE_URL ||

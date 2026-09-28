@@ -3,15 +3,11 @@ import {
 	CheckIcon,
 	CopyIcon,
 	DropdownIcon,
-	LogInIcon,
 	MessagesSquareIcon,
 	WrenchIcon,
 } from '@modrinth/assets'
 import { Admonition, Button, ButtonLink, Collapsible, IconButton, NewModal } from '@modrinth/ui'
 import { computed, ref } from 'vue'
-
-import { handleSevereError } from '@/composables/use-error.js'
-import { login as login_flow, set_default_user } from '@/helpers/auth.js'
 
 import { findMinecraftAuthError, type MinecraftAuthError } from './minecraft-auth-errors'
 
@@ -20,7 +16,6 @@ const rawError = ref<string>('')
 const matchedError = ref<MinecraftAuthError | null>(null)
 const debugCollapsed = ref(true)
 const copied = ref(false)
-const loadingSignIn = ref(false)
 
 function show(errorVal: { message?: string }) {
 	rawError.value = errorVal?.message ?? String(errorVal)
@@ -39,21 +34,6 @@ defineExpose({
 	show,
 	hide,
 })
-
-async function signInAgain() {
-	try {
-		loadingSignIn.value = true
-		const loggedIn = await login_flow()
-		if (loggedIn) {
-			await set_default_user(loggedIn.profile.id)
-		}
-		loadingSignIn.value = false
-		modal.value?.hide()
-	} catch (err) {
-		loadingSignIn.value = false
-		handleSevereError(err)
-	}
-}
 
 const debugInfo = computed(() => rawError.value || 'No error message.')
 
@@ -130,17 +110,11 @@ async function copyToClipboard(text: string) {
 
 			<!-- Action buttons -->
 			<div class="flex items-center gap-1">
-				<ButtonLink href="https://support.modrinth.com" class="flex-1" @click="modal?.hide()">
-					<MessagesSquareIcon /> Contact support
-				</ButtonLink>
 				<Button
-					type="colored"
-					color="brand"
-					:disabled="loadingSignIn"
-					class="flex-1"
-					@click="signInAgain"
+					class="w-full"
+					@click="modal?.hide()"
 				>
-					<LogInIcon /> Sign in again
+					Close
 				</Button>
 			</div>
 

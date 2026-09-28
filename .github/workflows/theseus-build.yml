@@ -33,12 +33,12 @@ jobs:
       CARGO_BUILD_JOBS: 4
       RUSTC_WRAPPER: sccache
       SCCACHE_GHA_ENABLED: 'true'
-      MODBRIDGE_RELAY_BASE_URL: https://br-mute-sun-avpguohr-relay.compute.c-11.us-east-1.aws.neon.tech
+      MODBRIDGE_RELAY_BASE_URL: https://br-divine-snow-ahjav8i1-relay.compute.c-3.us-east-1.aws.neon.tech
       XWIN_ACCEPT_TOS: 'true'
 
     steps:
       - name: Check out code
-        uses: actions/checkout@v4
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
 
@@ -49,14 +49,14 @@ jobs:
           pipx install cargo-xwin
 
       - name: Setup Rust toolchain
-        uses: actions-rust-lang/setup-rust-toolchain@v1
+        uses: actions-rust-lang/setup-rust-toolchain@v2
         with:
           target: x86_64-pc-windows-msvc
           rustflags: ''
           cache: false
 
       - name: Setup sccache
-        uses: mozilla-actions/sccache-action@v0.0.10
+        uses: mozilla-actions/sccache-action@v0.0.11
 
       - name: Setup Rust cache
         uses: swatinem/rust-cache@v2
@@ -65,13 +65,13 @@ jobs:
           save-if: ${{ github.ref == 'refs/heads/main' }}
 
       - name: Cache xwin SDK
-        uses: actions/cache@v4
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ~/.cache/xwin
           key: xwin-sdk-v1
 
       - name: Setup Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version-file: .nvmrc
 
@@ -170,13 +170,13 @@ jobs:
           (cd dist && zip -r ModBridge-Windows-Portable.zip ModBridge-Portable/)
 
       - name: Upload portable app
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: ModBridge-Windows-Portable
           path: dist/ModBridge-Windows-Portable.zip
 
       - name: Upload app bundles
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: ModBridge-Windows-Installer
           path: |

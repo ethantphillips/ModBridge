@@ -2,7 +2,7 @@
 
 use std::sync::LazyLock;
 
-pub const DEFAULT_RELAY_URL: &str = "https://br-mute-sun-avpguohr-relay.compute.c-11.us-east-1.aws.neon.tech";
+pub const DEFAULT_RELAY_URL: &str = "https://br-divine-snow-ahjav8i1-relay.compute.c-3.us-east-1.aws.neon.tech";
 
 pub static RELAY_BASE_URL: LazyLock<String> = LazyLock::new(|| {
 	if let Ok(url) = std::env::var("MODBRIDGE_RELAY_BASE_URL") {

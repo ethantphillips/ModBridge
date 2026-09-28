@@ -5,6 +5,7 @@ import dayjs from 'dayjs'
 import relativeTime from 'dayjs/plugin/relativeTime'
 import { computed } from 'vue'
 import { useRouter } from 'vue-router'
+import { config } from '@/config'
 
 dayjs.extend(relativeTime)
 
@@ -68,7 +69,7 @@ const toTransparent = computed(() => {
 				'background-image': `url(${
 					project.featured_gallery ??
 					project.gallery[0] ??
-					'https://br-mute-sun-avpguohr-relay.compute.c-11.us-east-1.aws.neon.tech/launcher-files/assets/maze-bg.png'
+					`${config.relayBaseUrl}/launcher-files/assets/maze-bg.png`
 				})`,
 			}"
 		>

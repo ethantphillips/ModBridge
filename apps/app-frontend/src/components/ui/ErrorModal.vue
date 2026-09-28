@@ -25,7 +25,6 @@ import { ChatIcon } from '@/assets/icons'
 import ModalWrapper from '@/components/ui/modal/ModalWrapper.vue'
 import { handleSevereError } from '@/composables/use-error.js'
 import { trackEvent } from '@/helpers/analytics'
-import { login as login_flow, set_default_user } from '@/helpers/auth.js'
 import { install_existing_instance } from '@/helpers/install'
 import { cancel_directory_change } from '@/helpers/settings.ts'
 import { showAppDbBackupsFolder } from '@/helpers/utils.js'
@@ -104,23 +103,6 @@ defineExpose({
 })
 
 const loadingMinecraft = ref(false)
-async function loginMinecraft() {
-	try {
-		loadingMinecraft.value = true
-		const loggedIn = await login_flow()
-
-		if (loggedIn) {
-			await set_default_user(loggedIn.profile.id).catch(handleError)
-		}
-
-		await trackEvent('AccountLogIn', { source: 'ErrorModal' })
-		loadingMinecraft.value = false
-		errorModal.value.hide()
-	} catch (err) {
-		loadingMinecraft.value = false
-		handleSevereError(err)
-	}
-}
 
 async function cancelDirectoryChange() {
 	try {
@@ -206,28 +188,11 @@ async function copyToClipboard(text) {
 						</p>
 					</template>
 					<template v-else>
-						<h3>Try another Microsoft account</h3>
+						<h3>Account issue</h3>
 						<p>
-							Double check you've signed in with the right account. You may own Minecraft on a
-							different Microsoft account.
-						</p>
-						<div class="cta-button">
-							<button class="btn btn-primary" :disabled="loadingMinecraft" @click="loginMinecraft">
-								<LogInIcon /> Try another account
-							</button>
-						</div>
-						<h3>Using PC Game Pass, coming from Bedrock, or just bought the game?</h3>
-						<p>
-							Try signing in with the
-							<a href="https://www.minecraft.net/en-us/download">official Minecraft Launcher</a>
-							first. Once you're done, come back here and sign in!
+							Please ensure a valid offline profile is configured and selected in the sidebar.
 						</p>
 					</template>
-					<div class="cta-button">
-						<button class="btn btn-primary" :disabled="loadingMinecraft" @click="loginMinecraft">
-							<LogInIcon /> Try signing in again
-						</button>
-					</div>
 				</template>
 				<template v-if="errorType === 'directory_move'">
 					<template v-if="metadata.readOnly">

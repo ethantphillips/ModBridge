@@ -4,10 +4,10 @@ import {
 	EditIcon,
 	EyeIcon,
 	InfoIcon,
+	PlusIcon,
 	RotateCounterClockwiseIcon,
 	ShirtIcon,
 	SpinnerIcon,
-	WindowsIcon,
 } from '@modrinth/assets'
 import {
 	Button,
@@ -35,7 +35,7 @@ import VirtualSkinSectionList from '@/components/ui/skin/VirtualSkinSectionList.
 import { useAppSettings } from '@/composables/use-app-settings.ts'
 import { handleSevereError } from '@/composables/use-error.js'
 import { trackEvent } from '@/helpers/analytics'
-import { check_reachable, get_default_user, login as login_flow, users } from '@/helpers/auth'
+import { check_reachable, get_default_user, users } from '@/helpers/auth'
 import { cleanupUnusedPreviews } from '@/helpers/rendering/skin-previews'
 import type { Cape, Skin, SkinTextureUrl } from '@/helpers/skins.ts'
 import {
@@ -194,11 +194,11 @@ const messages = defineMessages({
 	},
 	demoDescription: {
 		id: 'app.skins.demo.description',
-		defaultMessage: 'Sign in to your Minecraft account to save and apply skins!',
+		defaultMessage: 'Create an offline profile to save and apply skins!',
 	},
 	signInButton: {
 		id: 'app.skins.sign-in.button',
-		defaultMessage: 'Sign in to Microsoft',
+		defaultMessage: 'Create Offline Profile',
 	},
 })
 
@@ -812,15 +812,9 @@ async function loadCurrentUser() {
 }
 
 async function login() {
-	accountsCard.value.setLoginDisabled(true)
-	const loggedIn = await login_flow().catch(handleSevereError)
-
-	if (loggedIn && accountsCard) {
-		await accountsCard.value.refreshValues()
+	if (accountsCard.value) {
+		await accountsCard.value.login()
 	}
-
-	trackEvent('AccountLogIn')
-	accountsCard.value.setLoginDisabled(false)
 }
 
 function openAddSkinFileBrowser() {
@@ -1276,11 +1270,9 @@ await loadSkins()
 				v-show="accountsCard"
 				type="colored"
 				color="brand"
-				:disabled="accountsCard.loginDisabled"
 				@click="login"
 			>
-				<SpinnerIcon v-if="accountsCard.loginDisabled" class="animate-spin" />
-				<WindowsIcon v-else />
+				<PlusIcon />
 				{{ formatMessage(messages.signInButton) }}
 			</Button>
 		</div>
