@@ -13,7 +13,7 @@ const HOP_BY_HOP_HEADERS = new Set([
 
 export const CORS_ALLOW_METHODS = 'GET, HEAD, POST, PUT, PATCH, DELETE, OPTIONS'
 export const CORS_ALLOW_HEADERS =
-	'Content-Type, Authorization, X-Modbridge-Token, X-Panel-Version, Last-Event-Id, Range, If-Range, If-None-Match, If-Modified-Since, Modrinth-App-Version'
+	'Content-Type, Authorization, X-Modbridge-Token, X-Panel-Version, Last-Event-Id, Range, If-Range, If-None-Match, If-Modified-Since, Modrinth-App-Version, Modrinth-Sentry-Capture, X-Ratelimit-Key, User-Agent, Cache-Control'
 
 export function sanitizeRequestHeaders(headers: Headers, upstreamHost: string): Headers {
 	const sanitized = new Headers()

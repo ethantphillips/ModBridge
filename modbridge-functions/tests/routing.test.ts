@@ -1,7 +1,37 @@
 import { describe, it, expect } from 'vitest'
-import { matchRoute, ALLOWED_UPSTREAM_HOSTS, ROUTE_MAPPINGS } from '../src/relay/routing.js'
+import { matchRoute, ALLOWED_UPSTREAM_HOSTS, ROUTE_MAPPINGS, isAllowedNodeHost } from '../src/relay/routing.js'
 
 describe('Relay Routing', () => {
+	it.each([
+		['site', 'modrinth.com'],
+		['staging-api', 'staging-api.modrinth.com'],
+		['archon', 'archon.modrinth.com'],
+		['staging-archon', 'staging-archon.modrinth.com'],
+		['shared-instances', 'shared-instances.modrinth.com'],
+		['staging-shared-instances', 'staging-shared-instances.modrinth.com'],
+	])('routes the %s API through its allowlisted upstream', (route, hostname) => {
+		const match = matchRoute(`/${route}/v1/servers`)
+		expect(match?.target.upstreamHost).toBe(hostname)
+		expect(match?.subpath).toBe('/v1/servers')
+		expect(match?.target.enableRewrite).toBe(true)
+	})
+
+	it('supports the prior production WebSocket base path', () => {
+		const match = matchRoute('/ws/_internal/launcher_socket')
+		expect(match?.target.upstreamHost).toBe('api.modrinth.com')
+		expect(match?.subpath).toBe('/_internal/launcher_socket')
+	})
+
+	it.each(['node-abc.modrinth.com', 'us-east.nodes.modrinth.com', 'node.us-east.nodes.modrinth.com'])('routes approved Hosting node %s', (hostname) => {
+		expect(matchRoute(`/nodes/${hostname}/modrinth/v0/fs/list`)?.target.upstreamHost).toBe(hostname)
+		expect(matchRoute(`/nodes/${hostname}/modrinth/v0/fs/list`)?.subpath).toBe('/modrinth/v0/fs/list')
+	})
+
+	it.each(['nodes.modrinth.com', 'modrinth.com', 'evil.nodes.modrinth.com.attacker.com', 'node-.modrinth.com', 'node-abc.modrinth.com:443', 'user@node-abc.modrinth.com', '127.0.0.1', 'evil/modrinth.com', '-invalid.nodes.modrinth.com'])('rejects unsupported node host %s', (hostname) => {
+		expect(isAllowedNodeHost(hostname)).toBe(false)
+		expect(matchRoute(`/nodes/${hostname}/ws`)).toBeNull()
+	})
+
 	it('matches Modrinth API routes', () => {
 		const match = matchRoute('/api/v2/project/sodium')
 		expect(match).not.toBeNull()

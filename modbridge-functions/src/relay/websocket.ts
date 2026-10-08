@@ -44,7 +44,7 @@ function resolveWebSocketHost(request: Request, hostname: string) {
 }
 
 export function isWebSocketRoute(target: RouteTarget, subpath: string): boolean {
-	if (target.upstreamHost === 'api.modrinth.com') {
+	if (['api.modrinth.com', 'staging-api.modrinth.com'].includes(target.upstreamHost)) {
 		return ['/_internal/launcher_socket', '/v3/events_internal/launcher_socket'].includes(subpath)
 	}
 	return isAllowedNodeHost(target.upstreamHost) && subpath.startsWith('/')

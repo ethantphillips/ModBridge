@@ -95,17 +95,17 @@ fn set_env() {
 		(
 			"MODRINTH_API_URL",
 			"https://api.modrinth.com/v2/",
-			&["api.modrinth.com"][..],
+			&["api.modrinth.com", "staging-api.modrinth.com"][..],
 		),
 		(
 			"MODRINTH_API_URL_V3",
 			"https://api.modrinth.com/v3/",
-			&["api.modrinth.com"][..],
+			&["api.modrinth.com", "staging-api.modrinth.com"][..],
 		),
 		(
 			"MODRINTH_API_BASE_URL",
 			"https://api.modrinth.com/",
-			&["api.modrinth.com"][..],
+			&["api.modrinth.com", "staging-api.modrinth.com"][..],
 		),
 		(
 			"MODRINTH_LAUNCHER_META_URL",

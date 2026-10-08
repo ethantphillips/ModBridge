@@ -1,6 +1,6 @@
 <template>
 	<div
-		v-if="filteredNotices.length > 0 || (surveyNotice && !client.allowExternalEmbeds)"
+		v-if="filteredNotices.length > 0"
 		class="relative mx-auto mb-4 flex w-full min-w-0 flex-col gap-3 px-6"
 		:class="{
 			'max-w-[1280px]': constrainWidth,
@@ -16,20 +16,6 @@
 			class="w-full"
 			@dismiss="() => dismissNotice(notice.id)"
 		/>
-		<Admonition
-			v-if="surveyNotice && !client.allowExternalEmbeds"
-			type="info"
-			:header="surveyNotice.title || formatMessage(surveyMessages.title)"
-			:body="formatMessage(surveyMessages.body)"
-			:dismissible="surveyNotice.dismissable"
-			@dismiss="dismissSurvey"
-		>
-			<template #actions>
-				<ButtonLink :href="surveyUrl" target="_blank">
-					{{ formatMessage(commonMessages.openInBrowserButton) }}
-				</ButtonLink>
-			</template>
-		</Admonition>
 	</div>
 	<div
 		v-if="serverData && serverData.node === null && serverData.status !== 'suspended'"
@@ -346,9 +332,8 @@ import DOMPurify from 'dompurify'
 import { computed, nextTick, onBeforeUnmount, onMounted, onUnmounted, ref, watch } from 'vue'
 import { onBeforeRouteLeave, useRoute, useRouter } from 'vue-router'
 
-import Admonition from '#ui/components/base/Admonition.vue'
 import Avatar from '#ui/components/base/Avatar.vue'
-import { ButtonLink, IconButton, TeleportOverflowMenu } from '#ui/components/base/buttons'
+import { IconButton, TeleportOverflowMenu } from '#ui/components/base/buttons'
 import ErrorInformationCard from '#ui/components/base/ErrorInformationCard.vue'
 import NavTabs from '#ui/components/base/NavTabs.vue'
 import PageHeader from '#ui/components/base/page-header/index.vue'
@@ -828,20 +813,6 @@ const navLinks = computed<Tab[]>(() => [
 const filteredNotices = computed(
 	() => serverData.value?.notices?.filter((n) => n.level !== 'survey') ?? [],
 )
-const surveyNotice = computed(() => serverData.value?.notices?.find((n) => n.level === 'survey'))
-const surveyUrl = computed(() =>
-	surveyNotice.value ? `https://tally.so/r/${encodeURIComponent(surveyNotice.value.message)}` : '',
-)
-const surveyMessages = defineMessages({
-	title: {
-		id: 'servers.manage.survey.title',
-		defaultMessage: 'Share your feedback',
-	},
-	body: {
-		id: 'servers.manage.survey.body',
-		defaultMessage: 'Tell us about your experience with your server.',
-	},
-})
 
 async function dismissNotice(noticeId: number) {
 	await client.archon.servers_v0.dismissNotice(props.serverId, noticeId).catch((err) => {
@@ -852,96 +823,6 @@ async function dismissNotice(noticeId: number) {
 		})
 	})
 	await queryClient.invalidateQueries({ queryKey: ['servers', 'detail', props.serverId] })
-}
-
-async function dismissSurvey() {
-	const noticeId = surveyNotice.value?.id
-	if (noticeId === undefined) return
-	await dismissNotice(noticeId)
-}
-
-type TallyPopupOptions = {
-	key?: string
-	layout?: 'default' | 'modal'
-	width?: number
-	alignLeft?: boolean
-	hideTitle?: boolean
-	overlay?: boolean
-	emoji?: {
-		text: string
-		animation:
-			| 'none'
-			| 'wave'
-			| 'tada'
-			| 'heart-beat'
-			| 'spin'
-			| 'flash'
-			| 'bounce'
-			| 'rubber-band'
-			| 'head-shake'
-	}
-	autoClose?: number
-	showOnce?: boolean
-	doNotShowAfterSubmit?: boolean
-	customFormUrl?: string
-	hiddenFields?: { [key: string]: unknown }
-	onOpen?: () => void
-	onClose?: () => void
-	onPageView?: (page: number) => void
-	onSubmit?: (payload: unknown) => void
-}
-
-const popupOptions = computed(
-	() =>
-		({
-			layout: 'default',
-			width: 400,
-			autoClose: 2000,
-			hideTitle: true,
-			hiddenFields: {
-				username: props.authUser?.username,
-				user_id: props.authUser?.id,
-				user_email: props.authUser?.email,
-				server_id: serverData.value?.server_id,
-				loader: serverData.value?.loader,
-				game_version: serverData.value?.mc_version,
-				modpack_id: serverProject.value?.id,
-				modpack_name: serverProject.value?.title,
-			},
-			onOpen: () => debug(`Opened survey notice: ${surveyNotice.value?.id}`),
-			onClose: async () => await dismissSurvey(),
-			onSubmit: (payload: unknown) => {
-				debug('Form submitted:', payload)
-			},
-		}) satisfies TallyPopupOptions,
-)
-
-function getTally(): { openPopup?: (id: string, opts: TallyPopupOptions) => void } | undefined {
-	return (
-		window as Window & { Tally?: { openPopup?: (id: string, opts: TallyPopupOptions) => void } }
-	).Tally
-}
-
-function showSurvey() {
-	if (!client.allowExternalEmbeds || !surveyNotice.value) return
-
-	try {
-		const tally = getTally()
-		if (tally?.openPopup) {
-			tally.openPopup(surveyNotice.value.message, popupOptions.value)
-		}
-	} catch (e) {
-		console.error('Error opening Tally popup:', e)
-	}
-}
-
-function loadTallyScript() {
-	if (!client.allowExternalEmbeds) return
-	if (document.querySelector('script[src*="tally.so"]')) return
-	const script = document.createElement('script')
-	script.src = 'https://tally.so/widgets/embed.js'
-	script.defer = true
-	document.head.appendChild(script)
 }
 
 async function handleInstallationRetry() {
@@ -1399,11 +1280,6 @@ onMounted(() => {
 			}
 		},
 	)
-
-	loadTallyScript()
-	if (surveyNotice.value) {
-		showSurvey()
-	}
 
 	if (route.query.openSettings) {
 		const tabId = route.query.openSettings as ServerSettingsTabId

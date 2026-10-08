@@ -24,6 +24,7 @@ export function validateRelayAuth(request: Request): { authorized: boolean; reas
 	// Check query string token for streaming downloads where headers may not be attachable
 	const url = new URL(request.url)
 	const queryTokens = [
+		...url.searchParams.getAll('modbridge_token'),
 		...url.searchParams.getAll('relay_token'),
 		...url.searchParams.getAll('token'),
 	]
@@ -38,7 +39,7 @@ export function stripRelayQueryAuth(params: URLSearchParams): URLSearchParams {
 	const forwarded = new URLSearchParams()
 	const secret = process.env.MODBRIDGE_RELAY_SECRET || process.env.MODBRIDGE_RELAY_TOKEN
 	for (const [key, value] of params) {
-		if (key === 'relay_token' || (key === 'token' && secret && value === secret)) continue
+		if (key === 'modbridge_token' || key === 'relay_token' || (key === 'token' && secret?.trim() && value === secret)) continue
 		forwarded.append(key, value)
 	}
 	return forwarded

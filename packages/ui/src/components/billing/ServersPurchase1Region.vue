@@ -7,7 +7,6 @@ import { useFormatPrice } from '../../composables'
 import { defineMessages, useVIntl } from '../../composables/i18n'
 import { getPriceForInterval, monthsInInterval } from '../../utils/product-utils.ts'
 import { regionOverrides } from '../../utils/regions.ts'
-import IntlFormatted from '../base/IntlFormatted.vue'
 import Slider from '../base/Slider.vue'
 import ModalLoadingIndicator from '../modal/ModalLoadingIndicator.vue'
 import type { RegionPing, ServerBillingInterval } from './ModrinthServersPurchaseModal.vue'
@@ -170,10 +169,6 @@ const messages = defineMessages({
 		id: 'servers.region.prompt',
 		defaultMessage: 'Where would you like your server to be located?',
 	},
-	regionUnsupported: {
-		id: 'servers.region.region-unsupported',
-		defaultMessage: `Region not listed? <link>Let us know where you'd like to see Modrinth Hosting next!</link>`,
-	},
 	customPrompt: {
 		id: 'servers.region.custom.prompt',
 		defaultMessage: `How much RAM do you want your server to have?`,
@@ -274,20 +269,6 @@ onMounted(() => {
 					:ping="pings.find((p) => p.region === region.shortcode)?.ping"
 					:best-ping="bestPing === region.shortcode"
 				/>
-			</div>
-			<div class="mt-3 text-sm">
-				<IntlFormatted :message-id="messages.regionUnsupported">
-					<template #link="{ children }">
-						<a
-							class="text-link"
-							target="_blank"
-							rel="noopener noreferrer"
-							href="https://surveys.modrinth.com/servers-region-waitlist"
-						>
-							<component :is="() => children" />
-						</a>
-					</template>
-				</IntlFormatted>
 			</div>
 		</template>
 		<template v-if="custom">

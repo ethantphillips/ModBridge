@@ -1,4 +1,5 @@
 import { sanitizeRequestHeaders } from './headers.js'
+import { stripRelayQueryAuth } from '../relay/auth.js'
 
 const REDIRECT_STATUSES = new Set([301, 302, 303, 307, 308])
 
@@ -36,6 +37,7 @@ export async function fetchAllowlisted(
 
 	for (let redirects = 0; redirects <= 10; redirects++) {
 		validateUpstreamUrl(url, allowedHosts)
+		url.search = stripRelayQueryAuth(url.searchParams).toString()
 		let nextBody: BodyInit | null | undefined
 		if (body instanceof ReadableStream) {
 			const branches = body.tee()

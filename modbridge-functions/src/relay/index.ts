@@ -97,7 +97,7 @@ export default {
 
 		if (
 			request.headers.get('upgrade')?.toLowerCase() === 'websocket' ||
-			(match.target.upstreamHost === 'api.modrinth.com' &&
+			(['api.modrinth.com', 'staging-api.modrinth.com'].includes(match.target.upstreamHost) &&
 				isWebSocketRoute(match.target, match.subpath))
 		) {
 			return proxyWebSocket(request, match.target, match.subpath)

@@ -2,6 +2,8 @@ import type { RouteTarget } from '../shared/types.js'
 
 export const ALLOWED_UPSTREAM_HOSTS = new Set([
 	'api.modrinth.com',
+	'staging-api.modrinth.com',
+	'modrinth.com',
 	'api.github.com',
 	'avatars.githubusercontent.com',
 	'avatars0.githubusercontent.com',
@@ -39,6 +41,13 @@ interface RouteMapping {
 }
 
 export const ROUTE_MAPPINGS: RouteMapping[] = [
+	...[
+		['/staging-api', 'staging-api.modrinth.com'],
+		['/site', 'modrinth.com'],
+	].map(([prefix, upstreamHost]): RouteMapping => ({
+		prefix,
+		target: { upstreamHost, upstreamPrefix: '', category: 'modrinth-api', enableRewrite: true },
+	})),
 	{
 		prefix: '/github-api',
 		target: {
@@ -193,6 +202,15 @@ export const ROUTE_MAPPINGS: RouteMapping[] = [
 	},
 	{
 		prefix: '/api',
+		target: {
+			upstreamHost: 'api.modrinth.com',
+			upstreamPrefix: '',
+			category: 'modrinth-api',
+			enableRewrite: true,
+		},
+	},
+	{
+		prefix: '/ws',
 		target: {
 			upstreamHost: 'api.modrinth.com',
 			upstreamPrefix: '',
@@ -435,6 +453,7 @@ export function matchRoute(pathname: string): { target: RouteTarget; subpath: st
 export function isAllowedNodeHost(host: string): boolean {
 	return (
 		host.length <= 253 &&
-		/^(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+nodes\.modrinth\.com$/.test(host)
+		(/^(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+nodes\.modrinth\.com$/.test(host)
+			|| /^node-[a-z0-9](?:[a-z0-9-]{0,56}[a-z0-9])?\.modrinth\.com$/.test(host))
 	)
 }

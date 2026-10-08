@@ -93,7 +93,6 @@ import PrideFundraiserBanner from '@/components/ui/PrideFundraiserBanner.vue'
 import QuickInstanceSwitcher from '@/components/ui/QuickInstanceSwitcher.vue'
 import SharedInstanceInviteHandler from '@/components/ui/shared-instances/shared-instance-invite-handler/index.vue'
 import SplashScreen from '@/components/ui/SplashScreen.vue'
-import SurveyPopup from '@/components/ui/SurveyPopup.vue'
 import SyncInstancesUpdateModal from '@/components/ui/sync-instances-update-modal/index.vue'
 import {
 	markSyncInstancesUpdateNotificationShown,
@@ -279,6 +278,8 @@ const { addPopupNotification } = popupNotificationManager
 const appVersion = getVersion()
 const tauriApiClient = new TauriModrinthClient({
 	userAgent: async () => `modrinth/theseus/${await appVersion} (support@modrinth.com)`,
+	relayBaseUrl: config.relayBaseUrl,
+	relayAuthToken: config.relayAuthToken,
 	labrinthBaseUrl: config.labrinthBaseUrl,
 	archonBaseUrl: config.archonBaseUrl,
 	sharedInstancesBaseUrl: config.sharedInstancesBaseUrl,
@@ -748,8 +749,9 @@ async function setupApp() {
 		document.getElementsByTagName('html')[0].classList.add('windows')
 	}
 
-	fetch(`${config.labrinthBaseUrl}/appCriticalAnnouncement.json?version=${version}`, {
+	tauriFetch(`${config.labrinthBaseUrl}/appCriticalAnnouncement.json?version=${version}`, {
 		headers: relayHeaders,
+		redirect: 'error',
 	})
 		.then((response) => response.json())
 		.then((res) => {
@@ -1208,6 +1210,7 @@ async function validateSession(sessionToken) {
 		const response = await tauriFetch(`${config.labrinthBaseUrl}/v2/user`, {
 			method: 'GET',
 			headers: { ...relayHeaders, Authorization: sessionToken },
+			redirect: 'error',
 		})
 		if (response.status === 401) return false
 		return true
@@ -2222,7 +2225,6 @@ provideAppUpdateDownloadProgress(appUpdateDownload)
 		}"
 	>
 		<div class="app-viewport flex-grow router-view">
-			<SurveyPopup />
 			<div
 				class="loading-indicator-container h-8 fixed z-50 pointer-events-none"
 				:style="{

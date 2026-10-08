@@ -245,7 +245,7 @@ describe('desktop Relay URL policy', () => {
 			`${relay}/cdn/icon.png`,
 		)
 		const imageUrl = config.resolveRelayMediaUrl('https://cdn.modrinth.com/icon.png?size=128')
-		expect(new URL(imageUrl).searchParams.get('relay_token')).toBe('relay-secret')
+		expect(new URL(imageUrl).searchParams.get('modbridge_token')).toBe('relay-secret')
 		expect(new URL(imageUrl).searchParams.get('size')).toBe('128')
 		expect(config.resolveRelayMediaUrl(imageUrl)).toBe(imageUrl)
 		expect(config.resolveRelayMediaUrl('blob:https://tauri.localhost/preview')).toBe(
@@ -257,7 +257,7 @@ describe('desktop Relay URL policy', () => {
 		expect(new URL(socketUrl).origin).toBe('wss://relay.modbridge.internal')
 		expect(new URL(socketUrl).pathname).toBe('/nodes/ashburn1.nodes.modrinth.com/modrinth/v0/ws')
 		expect(new URL(socketUrl).searchParams.get('token')).toBe('node-secret')
-		expect(new URL(socketUrl).searchParams.get('relay_token')).toBe('relay-secret')
+		expect(new URL(socketUrl).searchParams.get('modbridge_token')).toBe('relay-secret')
 	})
 })
 

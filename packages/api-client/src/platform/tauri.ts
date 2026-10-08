@@ -1,16 +1,22 @@
 import type { ModrinthApiError } from '../core/errors'
 import type { ClientConfig } from '../types/client'
-import type { RequestOptions } from '../types/request'
+import type { RequestContext, RequestOptions } from '../types/request'
+import type { UploadProgress } from '../types/upload'
 import { appendRequestParams, parseResponseErrorData, toFetchBody } from '../utils/fetch'
+import { isRelayUrl, routeModrinthApiUrl } from '../utils/relay'
 import { GenericSyncClient } from './sync-generic'
 import { GenericWebSocketClient } from './websocket-generic'
 import { XHRUploadClient } from './xhr-upload-client'
 
 /**
  * Tauri-specific configuration
- * TODO: extend into interface if needed.
  */
-export type TauriClientConfig = ClientConfig
+export interface TauriClientConfig extends ClientConfig {
+	/** Route Modrinth API URLs through this relay, including custom module URLs. */
+	relayBaseUrl?: string
+	/** Relay credential, sent separately from the upstream Authorization header. */
+	relayAuthToken?: string
+}
 
 /**
  * Extended error type with HTTP response metadata
@@ -59,19 +65,74 @@ export class TauriModrinthClient extends XHRUploadClient {
 		})
 	}
 
+	protected buildUrl(path: string, baseUrl: string, version: number | 'internal' | string): string {
+		const url = /^https?:\/\//i.test(path) ? path : super.buildUrl(path, baseUrl, version)
+		return this.resolveUrl(url)
+	}
+
+	public resolveUrl(url: string): string {
+		return super.resolveUrl(this.routeUrlThroughRelay(url))
+	}
+
+	public resolveMediaUrl(url: string): string {
+		return this.attachRelayQueryToken(super.resolveMediaUrl(this.routeUrlThroughRelay(url)))
+	}
+
+	public resolveWebSocketUrl(url: string): string {
+		return this.attachRelayQueryToken(super.resolveWebSocketUrl(this.routeUrlThroughRelay(url)))
+	}
+
+	private attachRelayQueryToken(routed: string): string {
+		if (this.config.relayAuthToken && isRelayUrl(routed, this.config.relayBaseUrl)) {
+			const targetUrl = new URL(routed)
+			targetUrl.searchParams.set('modbridge_token', this.config.relayAuthToken)
+			return targetUrl.toString()
+		}
+		return routed
+	}
+
+	private routeUrlThroughRelay(url: string): string {
+		return routeModrinthApiUrl(url, this.config.relayBaseUrl, {
+			labrinth: this.resolveBaseUrl(this.config.labrinthBaseUrl!),
+			archon: this.resolveBaseUrl(this.config.archonBaseUrl!),
+			sharedinstances: this.resolveBaseUrl(this.config.sharedInstancesBaseUrl!),
+		})
+	}
+
+	private prepareRelayRequest(url: string, options: RequestOptions) {
+		const relayUrl = this.resolveUrl(url)
+		const headers = { ...options.headers }
+		if (this.config.relayAuthToken && isRelayUrl(relayUrl, this.config.relayBaseUrl)) {
+			headers['X-Modbridge-Token'] = this.config.relayAuthToken
+		}
+		return { url: relayUrl, options: { ...options, headers } }
+	}
+
+	protected executeXHRUpload<T>(
+		context: RequestContext,
+		progressCallbacks: Array<(p: UploadProgress) => void>,
+		abortController: AbortController,
+	): Promise<T> {
+		const request = this.prepareRelayRequest(context.url, context.options)
+		return super.executeXHRUpload<T>({ ...context, ...request }, progressCallbacks, abortController)
+	}
+
 	protected async executeRequest<T>(url: string, options: RequestOptions): Promise<T> {
 		try {
 			// Dynamically import Tauri HTTP plugin
 			// This allows the package to be used in non-Tauri environments
 			const { fetch: tauriFetch } = await import('@tauri-apps/plugin-http')
 
-			const body = toFetchBody(options.body)
-			const fullUrl = appendRequestParams(url, options.params)
+			const request = this.prepareRelayRequest(url, options)
+			const body = toFetchBody(request.options.body)
+			const fullUrl = appendRequestParams(request.url, request.options.params)
 
 			const response = await tauriFetch(fullUrl, {
-				method: options.method ?? 'GET',
-				headers: options.headers,
+				method: request.options.method ?? 'GET',
+				headers: request.options.headers,
 				body,
+				signal: request.options.signal,
+				redirect: isRelayUrl(fullUrl, this.config.relayBaseUrl) ? 'error' : undefined,
 			})
 
 			if (!response.ok) {
@@ -133,11 +194,13 @@ export class TauriModrinthClient extends XHRUploadClient {
 	): Promise<ReadableStream<Uint8Array>> {
 		try {
 			const { fetch: tauriFetch } = await import('@tauri-apps/plugin-http')
-			const response = await tauriFetch(appendRequestParams(url, options.params), {
-				method: options.method ?? 'GET',
-				headers: options.headers,
-				body: toFetchBody(options.body),
-				signal: options.signal,
+			const request = this.prepareRelayRequest(url, options)
+			const response = await tauriFetch(appendRequestParams(request.url, request.options.params), {
+				method: request.options.method ?? 'GET',
+				headers: request.options.headers,
+				body: toFetchBody(request.options.body),
+				signal: request.options.signal,
+				redirect: isRelayUrl(request.url, this.config.relayBaseUrl) ? 'error' : undefined,
 			})
 
 			if (!response.ok) {

@@ -29,8 +29,8 @@ export class KyrosFilesV1Module extends AbstractModule {
 	 */
 	public getFullWorldDownloadUrl(nodeUrlHost: string, worldId: string, token: string): string {
 		const url = new URL(
-			`/v1/worlds/${worldId}/files/download-full-zip`,
-			getNodeBaseUrl(nodeUrlHost),
+			`v1/worlds/${worldId}/files/download-full-zip`,
+			`${getNodeBaseUrl(nodeUrlHost).replace(/\/+$/, '')}/`,
 		)
 		url.searchParams.set('token', token)
 		return url.toString()

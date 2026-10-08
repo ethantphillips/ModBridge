@@ -4,6 +4,37 @@ import { rewriteJsonContent } from '../src/relay/rewrite.js'
 describe('URL Rewriting', () => {
 	const relayOrigin = 'https://relay.modbridge.internal'
 
+	it('rewrites API and node URLs while preserving user text and similar domains', () => {
+		const input = JSON.stringify({
+			api: 'https://api.modrinth.com/v3/user?name=example#section',
+			staging: 'https://staging-api.modrinth.com/v3/user',
+			archon: 'https://archon.modrinth.com/modrinth/v0/servers',
+			shared: 'https://shared-instances.modrinth.com/v1/instances',
+			siteApi: 'https://modrinth.com/api/intercom/user',
+			siteProject: 'https://modrinth.com/mod/sodium',
+			node: 'node-xyz.modrinth.com/modrinth/v0/fs',
+			socket: 'wss://us-east.nodes.modrinth.com/ws?code=abc',
+			description: 'Visit https://api.modrinth.com/v3/user for documentation.',
+			lookalike: 'https://api.modrinth.com.attacker.com/v3/user',
+		})
+		const result = JSON.parse(rewriteJsonContent(input, relayOrigin))
+		expect(result.api).toBe(`${relayOrigin}/api/v3/user?name=example#section`)
+		expect(result.staging).toBe(`${relayOrigin}/staging-api/v3/user`)
+		expect(result.archon).toBe(`${relayOrigin}/archon/modrinth/v0/servers`)
+		expect(result.shared).toBe(`${relayOrigin}/shared-instances/v1/instances`)
+		expect(result.siteApi).toBe(`${relayOrigin}/site/api/intercom/user`)
+		expect(result.siteProject).toBe('https://modrinth.com/mod/sodium')
+		expect(result.node).toBe(`${relayOrigin}/nodes/node-xyz.modrinth.com/modrinth/v0/fs`)
+		expect(result.socket).toBe('wss://relay.modbridge.internal/nodes/us-east.nodes.modrinth.com/ws?code=abc')
+		expect(result.description).toBe(JSON.parse(input).description)
+		expect(result.lookalike).toBe(JSON.parse(input).lookalike)
+	})
+
+	it('preserves formatting and escaped prose when no URL value changes', () => {
+		const input = '{\n\t"description": "A \\"quoted\\" https://api.modrinth.com URL",\n\t"count": 1\n}'
+		expect(rewriteJsonContent(input, relayOrigin)).toBe(input)
+	})
+
 	it('rewrites Modrinth CDN URLs to relay CDN endpoints', () => {
 		const input = JSON.stringify({
 			files: [

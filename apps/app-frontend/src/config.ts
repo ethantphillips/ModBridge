@@ -11,40 +11,43 @@ const relayBaseUrl = trimTrailingSlash(
 		DEFAULT_RELAY_URL,
 )
 
-const siteUrl = relayBaseUrl
+const siteUrl = `${relayBaseUrl}/site`
 const labrinthBaseUrl = `${relayBaseUrl}/api`
 const archonBaseUrl = `${relayBaseUrl}/archon`
 const sharedInstancesBaseUrl = `${relayBaseUrl}/shared-instances`
-const relayToken =
+const relayAuthToken = (
 	import.meta.env.MODBRIDGE_RELAY_AUTH_TOKEN ||
 	import.meta.env.VITE_MODBRIDGE_RELAY_AUTH_TOKEN ||
 	import.meta.env.MODBRIDGE_RELAY_TOKEN ||
-	import.meta.env.VITE_MODBRIDGE_RELAY_TOKEN
+	import.meta.env.VITE_MODBRIDGE_RELAY_TOKEN ||
+	''
+).trim()
 
 export const resolveRelayUrl = createRelayUrlResolver(relayBaseUrl)
 
-export const relayHeaders: Record<string, string> = relayToken
-	? { 'X-Modbridge-Token': relayToken }
+export const relayHeaders: Record<string, string> = relayAuthToken
+	? { 'X-Modbridge-Token': relayAuthToken }
 	: {}
 
 export function resolveRelayMediaUrl(url: string): string {
 	const routed = resolveRelayUrl(url)
-	if (!relayToken || !routed.startsWith(`${relayBaseUrl}/`)) return routed
+	if (!relayAuthToken || !routed.startsWith(`${relayBaseUrl}/`)) return routed
 	const mediaUrl = new URL(routed)
-	mediaUrl.searchParams.set('relay_token', relayToken)
+	mediaUrl.searchParams.set('modbridge_token', relayAuthToken)
 	return mediaUrl.href
 }
 
 export function resolveRelayWebSocketUrl(url: string): string {
 	const routed = resolveRelayUrl(url)
-	if (!relayToken) return routed
+	if (!relayAuthToken) return routed
 	const socketUrl = new URL(routed)
-	socketUrl.searchParams.set('relay_token', relayToken)
+	socketUrl.searchParams.set('modbridge_token', relayAuthToken)
 	return socketUrl.href
 }
 
 export const config = {
 	relayBaseUrl,
+	relayAuthToken,
 	siteUrl,
 	stripePublishableKey:
 		import.meta.env.VITE_STRIPE_PUBLISHABLE_KEY ||

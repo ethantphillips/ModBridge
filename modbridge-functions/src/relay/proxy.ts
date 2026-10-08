@@ -1,7 +1,7 @@
 import { sanitizeRequestHeaders, sanitizeResponseHeaders } from '../shared/headers.js'
 import { createErrorResponse } from '../shared/errors.js'
 import type { ProxyRequestOptions } from '../shared/types.js'
-import { ALLOWED_UPSTREAM_HOSTS, isAllowedNodeHost } from './routing.js'
+import { ALLOWED_UPSTREAM_HOSTS, isAllowedNodeHost, ROUTE_MAPPINGS } from './routing.js'
 import { rewriteJsonContent } from './rewrite.js'
 import { fetchAllowlisted, UpstreamError } from '../shared/fetch.js'
 import { stripRelayQueryAuth } from './auth.js'
@@ -34,11 +34,14 @@ export async function executeProxy(options: ProxyRequestOptions): Promise<Respon
 	}
 
 	let upstreamResponse: Response
+	let finalHost = target.upstreamHost
 	try {
 		const allowedHosts = isAllowedNodeHost(target.upstreamHost)
 			? new Set([...ALLOWED_UPSTREAM_HOSTS, target.upstreamHost])
 			: ALLOWED_UPSTREAM_HOSTS
-		upstreamResponse = (await fetchAllowlisted(upstreamUrl, fetchInit, allowedHosts)).response
+		const result = await fetchAllowlisted(upstreamUrl, fetchInit, allowedHosts)
+		upstreamResponse = result.response
+		finalHost = result.url.hostname
 	} catch (err: unknown) {
 		const message = err instanceof Error ? err.message : String(err)
 		return createErrorResponse(
@@ -63,8 +66,10 @@ export async function executeProxy(options: ProxyRequestOptions): Promise<Respon
 	}
 
 	// If rewriting is enabled and the response is JSON, perform safe URL rewriting
+	const enableRewrite = target.enableRewrite || isAllowedNodeHost(finalHost)
+		|| ROUTE_MAPPINGS.some(({ target }) => target.upstreamHost === finalHost && target.enableRewrite)
 	if (
-		target.enableRewrite &&
+		enableRewrite &&
 		isJson &&
 		upstreamResponse.status >= 200 &&
 		upstreamResponse.status < 300 &&

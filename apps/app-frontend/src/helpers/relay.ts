@@ -1,5 +1,6 @@
 const SERVICE_ROUTES: Record<string, string> = {
 	'api.modrinth.com': '/api',
+	'staging-api.modrinth.com': '/staging-api',
 	'cdn.modrinth.com': '/cdn',
 	'staging-cdn.modrinth.com': '/staging-cdn',
 	'launcher-meta.modrinth.com': '/launcher-meta',

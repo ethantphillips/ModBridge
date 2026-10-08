@@ -96,6 +96,7 @@ fn modrinth_route_with_base(
 		.strip_prefix(base.path().trim_end_matches('/'))?;
 	for (prefix, kind) in [
 		("/api", ModrinthRoute::Api),
+		("/staging-api", ModrinthRoute::Api),
 		("/modrinth/api", ModrinthRoute::Api),
 		("/cdn", ModrinthRoute::Cdn),
 		("/staging-cdn", ModrinthRoute::Cdn),
@@ -130,8 +131,10 @@ fn route_websocket_url_with_base(
 		.map_err(|_| RelayRoutingError::UnsupportedUrl)?;
 	let base = parse_relay_base(relay_base)?;
 	if !is_relay_destination(&source, &base)
-		&& source.host_str() != Some("api.modrinth.com")
-	{
+		&& !source.host_str().is_some_and(|host| {
+			matches!(host, "api.modrinth.com" | "staging-api.modrinth.com")
+				|| is_modrinth_node_host(host)
+		}) {
 		return Err(RelayRoutingError::UnsupportedHost(
 			source.host_str().unwrap_or_default().to_string(),
 		));
@@ -321,6 +324,7 @@ pub(crate) fn relay_request_with_base(
 
 const ROUTE_MAPPINGS: &[(&str, &str)] = &[
 	("api.modrinth.com", "/api"),
+	("staging-api.modrinth.com", "/staging-api"),
 	("cdn.modrinth.com", "/cdn"),
 	("staging-cdn.modrinth.com", "/staging-cdn"),
 	("launcher-meta.modrinth.com", "/launcher-meta"),
@@ -394,12 +398,34 @@ pub fn route_url_with_base(
 	let relay_prefix = ROUTE_MAPPINGS
 		.iter()
 		.find_map(|(upstream, prefix)| (*upstream == host).then_some(*prefix))
+		.map(str::to_owned)
+		.or_else(|| {
+			is_modrinth_node_host(host).then(|| format!("/nodes/{host}"))
+		})
 		.ok_or_else(|| RelayRoutingError::UnsupportedHost(host.to_string()))?;
 	let mut target = base;
 	let base_path = target.path().trim_end_matches('/');
 	target.set_path(&format!("{base_path}{relay_prefix}{}", source.path()));
 	target.set_query(source.query());
 	Ok(target.to_string())
+}
+
+fn is_modrinth_node_host(host: &str) -> bool {
+	let valid_labels = host.split('.').all(|label| {
+		!label.is_empty()
+			&& !label.starts_with('-')
+			&& !label.ends_with('-')
+			&& label
+				.bytes()
+				.all(|c| c.is_ascii_alphanumeric() || c == b'-')
+	});
+	valid_labels
+		&& (host.ends_with(".nodes.modrinth.com")
+			|| host.strip_suffix(".modrinth.com").is_some_and(|label| {
+				label.starts_with("node-")
+					&& label.len() > 5
+					&& !label.contains('.')
+			}))
 }
 
 /// Restricts redirects to Relay's origin and configured base path.
@@ -462,6 +488,54 @@ mod tests {
 	}
 
 	#[test]
+	fn routes_staging_api_and_approved_node_requests() {
+		assert_eq!(
+			route_url_with_base(
+				"https://staging-api.modrinth.com/v3/user",
+				TEST_RELAY,
+			)
+			.unwrap(),
+			format!("{TEST_RELAY}/staging-api/v3/user")
+		);
+		for host in ["us1.nodes.modrinth.com", "node-abc.modrinth.com"] {
+			assert_eq!(
+				route_url_with_base(
+					&format!("https://{host}/server/download?token=upstream"),
+					TEST_RELAY,
+				)
+				.unwrap(),
+				format!(
+					"{TEST_RELAY}/nodes/{host}/server/download?token=upstream"
+				)
+			);
+			assert_eq!(
+				route_websocket_url_with_base(
+					&format!("wss://{host}/server/socket"),
+					TEST_RELAY,
+				)
+				.unwrap(),
+				format!(
+					"wss://relay.modbridge.internal/nodes/{host}/server/socket"
+				)
+			);
+		}
+	}
+
+	#[test]
+	fn rejects_unapproved_node_hosts_and_ports() {
+		for url in [
+			"https://nodes.modrinth.com/server/download",
+			"https://node-.modrinth.com/server/download",
+			"https://node-abc.modrinth.com.evil.com/server/download",
+			"https://node-abc.extra.modrinth.com/server/download",
+			"https://-bad.nodes.modrinth.com/server/download",
+			"https://node-abc.modrinth.com:444/server/download",
+		] {
+			assert!(route_url_with_base(url, TEST_RELAY).is_err(), "{url}");
+		}
+	}
+
+	#[test]
 	fn routes_friends_websocket_to_relay_and_rejects_other_origins() {
 		let upstream =
 			"wss://api.modrinth.com/_internal/launcher_socket?code=session";
@@ -505,6 +579,8 @@ mod tests {
 		}
 		for url in [
 			"https://api.modrinth.com/v2/user",
+			"https://staging-api.modrinth.com/v3/user",
+			"https://relay.modbridge.internal/staging-api/v3/user",
 			"https://relay.modbridge.internal/api/v3/user",
 			"https://relay.modbridge.internal/modrinth/api/v2/user",
 		] {
