@@ -12,7 +12,7 @@ import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import Button from '#ui/components/base/buttons/Button.vue'
 import IconButton from '#ui/components/base/buttons/IconButton.vue'
 import { useVIntl } from '#ui/composables/i18n'
-import { injectNotificationManager } from '#ui/providers'
+import { injectModrinthClient, injectNotificationManager } from '#ui/providers'
 
 import Controls from './controls.vue'
 import { imageViewerEditorMessages as messages } from './image-viewer-editor-messages'
@@ -64,6 +64,7 @@ const panning = ref<{
 }>()
 const brushPointer = ref({ x: 0, y: 0, visible: false })
 const { handleError } = injectNotificationManager()
+const client = injectModrinthClient(null)
 const { formatMessage } = useVIntl()
 const editor = useImageEditor()
 const {
@@ -113,6 +114,13 @@ const nativeImageView = computed(
 		props.mode === 'view' &&
 		[props.item.src, props.item.editorSource?.path].some(isGifOrWebpSource),
 )
+const resolvedSrc = computed(() => {
+	try {
+		return client?.resolveMediaUrl(props.item.src) ?? props.item.src
+	} catch {
+		return undefined
+	}
+})
 
 let resizeObserver: ResizeObserver | undefined
 let initializationGeneration = 0
@@ -400,7 +408,7 @@ defineExpose({ markSaved })
 	>
 		<img
 			v-if="mode === 'view' && loadingEditorData && !nativeImageView"
-			:src="item.src"
+			:src="resolvedSrc"
 			:alt="item.alt"
 			class="pointer-events-none relative z-[2] m-auto block h-full w-full shrink-0 object-contain"
 			draggable="false"
@@ -419,7 +427,7 @@ defineExpose({ markSaved })
 			<canvas ref="canvasElement" :aria-label="item.alt" role="img" />
 			<img
 				v-if="nativeImageView"
-				:src="item.src"
+				:src="resolvedSrc"
 				:alt="item.alt"
 				class="pointer-events-none absolute inset-0 z-[2] h-full w-full object-contain"
 				draggable="false"

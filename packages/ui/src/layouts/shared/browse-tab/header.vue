@@ -12,13 +12,15 @@ import PageHeaderMetadata from '#ui/components/base/page-header/metadata/index.v
 import PageHeaderMetadataItem from '#ui/components/base/page-header/metadata/page-header-metadata-item.vue'
 import TagIcon from '#ui/components/base/TagIcon.vue'
 import { useServerImage } from '#ui/composables/use-server-image'
+import { injectModrinthClient } from '#ui/providers/api-client'
 import { formatLoaderLabel } from '#ui/utils/loaders'
 
 import SelectedProjectsLeaveModal from './components/SelectedProjectsLeaveModal.vue'
 import { injectBrowseManager } from './providers/browse-manager'
 import type { BrowseInstallContext } from './types'
 
-const MEDAL_ICON_URL = 'https://cdn.modrinth.com/medal_icon.webp'
+const client = injectModrinthClient()
+const MEDAL_ICON_URL = client.resolveMediaUrl('https://cdn.modrinth.com/medal_icon.webp')
 
 const router = useRouter()
 const props = defineProps<{

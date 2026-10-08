@@ -4,17 +4,15 @@ use reqwest::StatusCode;
 
 use crate::State;
 use crate::state::{Credentials, MinecraftLoginFlow};
-use crate::util::fetch::INSECURE_REQWEST_CLIENT;
+use crate::util::fetch::{INSECURE_REQWEST_CLIENT, relay_request};
 
 #[tracing::instrument]
 pub async fn check_reachable() -> crate::Result<()> {
-	let target_url = crate::util::fetch::route_url_through_relay(
+	let req = relay_request(
+		&INSECURE_REQWEST_CLIENT,
+		reqwest::Method::GET,
 		"https://sessionserver.mojang.com/session/minecraft/hasJoined",
-	);
-	let mut req = INSECURE_REQWEST_CLIENT.get(&target_url);
-	if let Some(token) = crate::util::fetch::get_relay_token() {
-		req = req.header("X-Modbridge-Token", token);
-	}
+	)?;
 	let resp = match req.send().await {
 		Ok(r) => r,
 		Err(_) => return Ok(()),
@@ -55,7 +53,7 @@ pub async fn finish_login(
 }
 
 /// Create a new offline user identity using username + Identity PIN.
-#[tracing::instrument]
+#[tracing::instrument(skip(pin))]
 pub async fn add_offline_user(
     username: &str,
     pin: &str,
@@ -85,39 +83,14 @@ pub async fn get_default_user() -> crate::Result<Option<uuid::Uuid>> {
 #[tracing::instrument]
 pub async fn set_default_user(user: uuid::Uuid) -> crate::Result<()> {
     let state = State::get().await?;
-    let users = Credentials::get_all(&state.pool).await?;
-    let (_, mut user) = users.remove(&user).ok_or_else(|| {
-        crate::ErrorKind::OtherError(format!(
-            "Tried to get nonexistent user with ID {user}"
-        ))
-        .as_error()
-    })?;
-
-    user.active = true;
-    user.upsert(&state.pool).await?;
-
-    Ok(())
+	Credentials::set_active(user, &state.pool).await
 }
 
 /// Remove a user account from the database
 #[tracing::instrument]
 pub async fn remove_user(uuid: uuid::Uuid) -> crate::Result<()> {
     let state = State::get().await?;
-
-    let users = Credentials::get_all(&state.pool).await?;
-
-    if let Some((uuid, user)) = users.remove(&uuid) {
-        Credentials::remove(uuid, &state.pool).await?;
-
-        if user.active
-            && let Some((_, mut user)) = users.into_iter().next()
-        {
-            user.active = true;
-            user.upsert(&state.pool).await?;
-        }
-    }
-
-    Ok(())
+	Credentials::remove_and_select(uuid, &state.pool).await
 }
 
 /// Get a copy of the list of all user credentials

@@ -194,11 +194,23 @@ impl ModrinthCredentials {
 }
 
 pub const fn get_login_url() -> &'static str {
-    concat!(env!("MODRINTH_URL"), "auth/sign-in")
+	"https://modrinth.com/auth/sign-in"
 }
 
 pub const fn get_signup_url() -> &'static str {
-    concat!(env!("MODRINTH_URL"), "auth/sign-up")
+	"https://modrinth.com/auth/sign-up"
+}
+
+#[cfg(test)]
+mod browser_auth_url_tests {
+	use super::{get_login_url, get_signup_url};
+
+	#[test]
+	fn browser_auth_urls_use_canonical_site_despite_local_build_configuration()
+	{
+		assert_eq!(get_login_url(), "https://modrinth.com/auth/sign-in");
+		assert_eq!(get_signup_url(), "https://modrinth.com/auth/sign-up");
+	}
 }
 
 pub async fn finish_login_flow(

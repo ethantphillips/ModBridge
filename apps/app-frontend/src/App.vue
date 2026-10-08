@@ -17,6 +17,7 @@ import {
 	ImageIcon,
 	LogInIcon,
 	LogOutIcon,
+	MessageIcon,
 	PlayIcon,
 	PlusIcon,
 	RefreshCwIcon,
@@ -55,7 +56,6 @@ import {
 	TooltipDirective,
 	useDebugLogger,
 	useFormatBytes,
-	useHostingIntercom,
 	UserRoleIcon,
 	useVIntl,
 } from '@modrinth/ui'
@@ -107,8 +107,16 @@ import { useError } from '@/composables/use-error.js'
 import { useInstanceMetadataRefresh } from '@/composables/use-instance-metadata-refresh'
 import { useQuickInstanceLimit } from '@/composables/use-quick-instance-limit.ts'
 import { isDarkTheme, useTheme } from '@/composables/use-theme.ts'
-import { config } from '@/config'
+import {
+	config,
+	relayHeaders,
+	resolveRelayMediaUrl,
+	resolveRelayUrl,
+	resolveRelayWebSocketUrl,
+} from '@/config'
 import { getAccountAppearance, rememberAccountAppearance } from '@/helpers/account-appearance.ts'
+import { trackEvent } from '@/helpers/analytics'
+import { readUpdateSize, runUpdateCheckWithRetry, selectUpdateResource } from '@/helpers/app-update'
 import { check_reachable } from '@/helpers/auth.js'
 import { get_user, get_user_many, get_version } from '@/helpers/cache.js'
 import { gameSettingsQueryOptions } from '@/helpers/game-options'
@@ -216,12 +224,10 @@ function updateHistoryNavigationState() {
 
 function handleFullscreenChange() {}
 
-
 updateHistoryNavigationState()
 
 const APP_LEFT_NAV_WIDTH = '4rem'
 const APP_SIDEBAR_WIDTH = 300
-const INTERCOM_BUBBLE_DEFAULT_PADDING = 20
 const PRIDE_FUNDRAISER_END_DATE = new Date('2026-07-01T00:00:00Z').getTime()
 const credentials = ref()
 const storedModrinthAccounts = ref([])
@@ -250,25 +256,6 @@ const hostingUpdateRequired = computed(
 const prideFundraiserEnabled = computed(
 	() => appSettings.getFeatureFlag('pride_fundraiser') && Date.now() < PRIDE_FUNDRAISER_END_DATE,
 )
-const hostingIntercomIdentityKey = computed(() => {
-	const rawServerId = route.params.id
-	const serverId = Array.isArray(rawServerId) ? rawServerId[0] : rawServerId
-	const userId = credentials.value?.user_id ?? credentials.value?.user?.id ?? 'anonymous'
-	return `${userId}:${serverId ?? 'hosting'}`
-})
-const hostingIntercom = useHostingIntercom({
-	enabled: computed(
-		() => hostingRouteActive.value && !hostingUpdateRequired.value && !!credentials.value?.session,
-	),
-	appId: 'ykeritl9',
-	fetchToken: fetchIntercomToken,
-	identityKey: hostingIntercomIdentityKey,
-	horizontalPadding: computed(() =>
-		sidebarVisible.value
-			? APP_SIDEBAR_WIDTH + INTERCOM_BUBBLE_DEFAULT_PADDING
-			: INTERCOM_BUBBLE_DEFAULT_PADDING,
-	),
-})
 
 const notificationManager = new AppNotificationManager()
 provideNotificationManager(notificationManager)
@@ -295,6 +282,11 @@ const tauriApiClient = new TauriModrinthClient({
 	labrinthBaseUrl: config.labrinthBaseUrl,
 	archonBaseUrl: config.archonBaseUrl,
 	sharedInstancesBaseUrl: config.sharedInstancesBaseUrl,
+	resolveUrl: resolveRelayUrl,
+	resolveMediaUrl: resolveRelayMediaUrl,
+	resolveWebSocketUrl: resolveRelayWebSocketUrl,
+	headers: relayHeaders,
+	allowExternalEmbeds: false,
 	features: [
 		new NodeAuthFeature({
 			getAuth: () => nodeAuthState.getAuth?.() ?? null,
@@ -339,18 +331,22 @@ providePageContext({
 		left: ref(APP_LEFT_NAV_WIDTH),
 		right: computed(() => (sidebarVisible.value ? `${APP_SIDEBAR_WIDTH}px` : '0px')),
 	},
-	intercomBubble: hostingIntercom.intercomBubble,
 	featureFlags: {
 		serverRamAsBytesAlwaysOn: computed(() =>
 			appSettings.getFeatureFlag('server_ram_as_bytes_always_on'),
 		),
 	},
 	openExternalUrl: (url) => void openUrl(url),
+	downloadFile: (url, name) =>
+		invoke('plugin:files|download_file_to_user_destination', { url, name }),
+	saveBlob: async (blob, name) =>
+		invoke('plugin:files|save_blob_to_user_destination', {
+			data: Array.from(new Uint8Array(await blob.arrayBuffer())),
+			name,
+		}),
 })
 provideModalBehavior({
 	noblur: computed(() => !appTheme.advancedRendering),
-	onShow: () => take_ads_window_hold(),
-	onHide: () => release_ads_window_hold(),
 })
 
 const creationIconEditorModal = ref(null)
@@ -504,7 +500,7 @@ onMounted(async () => {
 	document.querySelector('body').addEventListener('contextmenu', handleContextMenu)
 	document.addEventListener('fullscreenchange', handleFullscreenChange)
 
-	checkUpdates()
+	void checkUpdates().catch(handleError)
 })
 
 onUnmounted(async () => {
@@ -653,6 +649,10 @@ const messages = defineMessages({
 		id: 'app.sidebar.playing-as',
 		defaultMessage: 'Playing as',
 	},
+	hostingSupport: {
+		id: 'app.hosting.support',
+		defaultMessage: 'Contact support',
+	},
 })
 
 async function setupApp() {
@@ -748,7 +748,9 @@ async function setupApp() {
 		document.getElementsByTagName('html')[0].classList.add('windows')
 	}
 
-	fetch(`${config.labrinthBaseUrl}/appCriticalAnnouncement.json?version=${version}`)
+	fetch(`${config.labrinthBaseUrl}/appCriticalAnnouncement.json?version=${version}`, {
+		headers: relayHeaders,
+	})
 		.then((response) => response.json())
 		.then((res) => {
 			if (res && res.header && res.body) {
@@ -1205,7 +1207,7 @@ async function validateSession(sessionToken) {
 	try {
 		const response = await tauriFetch(`${config.labrinthBaseUrl}/v2/user`, {
 			method: 'GET',
-			headers: { Authorization: sessionToken },
+			headers: { ...relayHeaders, Authorization: sessionToken },
 		})
 		if (response.status === 401) return false
 		return true
@@ -1442,33 +1444,6 @@ const modrinthAccountMenuOptions = computed(() => [
 		action: () => logOut(),
 	},
 ])
-
-async function fetchIntercomToken() {
-	const creds = await getCreds()
-	if (!creds?.session) {
-		throw new Error('Not authenticated')
-	}
-
-	const params = new URLSearchParams()
-	const rawServerId = route.params.id
-	const serverId = Array.isArray(rawServerId) ? rawServerId[0] : rawServerId
-	if (route.path.startsWith('/hosting/manage/') && typeof serverId === 'string') {
-		params.set('server_id', serverId)
-	}
-	const query = params.size > 0 ? `?${params.toString()}` : ''
-
-	const response = await tauriFetch(`${config.siteUrl}/api/intercom/messenger-jwt${query}`, {
-		method: 'GET',
-		headers: {
-			Authorization: `Bearer ${creds.session}`,
-		},
-	})
-	if (!response.ok) {
-		throw new Error(`Failed to fetch Intercom token: ${response.status}`)
-	}
-	return await response.json()
-}
-
 
 onMounted(() => {
 	invoke('show_window')
@@ -1803,7 +1778,8 @@ async function checkUpdates() {
 		console.log('Skipping update check as updates are disabled in this build or environment')
 		updatesEnabled.value = false
 
-		if (os.value === 'Linux' && !isDevEnvironment.value) {
+		const [platform, dev] = await Promise.all([getOS(), isDev()])
+		if (platform === 'Linux' && !dev) {
 			checkLinuxUpdates()
 			setInterval(checkLinuxUpdates, 5 * 60 * 1000)
 		}
@@ -1811,25 +1787,34 @@ async function checkUpdates() {
 	}
 
 	async function performCheck() {
-		const update = await invoke('plugin:updater|check')
-		if (!update) {
+		const update = await invoke('check_for_update')
+		const selection = await selectUpdateResource(
+			update,
+			availableUpdate.value,
+			downloading.value,
+			(rid) => invoke('plugin:resources|close', { rid }),
+			(accepted) => {
+				appUpdateDownload.progress.value = 0
+				finishedDownloading.value = false
+				downloading.value = false
+				updateSize.value = null
+				availableUpdate.value = accepted
+			},
+		)
+		if (selection === 'none') {
 			console.log('No update available')
 			return
 		}
 
-		const isExistingUpdate = update.version === availableUpdate.value?.version
-
-		if (isExistingUpdate) {
+		if (selection === 'known') {
 			console.log('Update is already known')
 			scheduleDelayedUpdatePopup()
 			return
 		}
-
-		appUpdateDownload.progress.value = 0
-		finishedDownloading.value = false
-		downloading.value = false
-		updateSize.value = null
-		availableUpdate.value = update
+		if (selection === 'deferred') {
+			console.log('Keeping the active update download until it finishes')
+			return
+		}
 
 		console.log(`Update ${update.version} is available.`)
 
@@ -1843,22 +1828,26 @@ async function checkUpdates() {
 			scheduleDelayedUpdatePopup()
 		}
 
-		getUpdateSize(update.rid).then((size) => (updateSize.value = size))
+		void readUpdateSize(
+			update.rid,
+			getUpdateSize,
+			() => availableUpdate.value?.rid,
+			(size) => (updateSize.value = size),
+			(error) => console.error('Failed to read update download size:', error),
+		)
 	}
 
-	await performCheck()
-	setTimeout(
-		() => {
-			checkUpdates()
-		},
-		5 /* min */ * 60 /* sec */ * 1000 /* ms */,
+	await runUpdateCheckWithRetry(
+		performCheck,
+		(error) => console.error('Failed to check for updates:', error),
+		() => setTimeout(() => void checkUpdates().catch(handleError), 5 * 60 * 1000),
 	)
 }
 
 async function checkLinuxUpdates() {
 	try {
 		const [response, currentVersion] = await Promise.all([
-			fetch('https://br-divine-snow-ahjav8i1-updates.compute.c-3.us-east-1.aws.neon.tech/latest'),
+			fetch(`${config.relayBaseUrl}/updates/latest`, { headers: relayHeaders }),
 			getVersion(),
 		])
 		const updates = await response.json()
@@ -1888,6 +1877,9 @@ async function downloadAvailableUpdate() {
 }
 
 async function downloadUpdate(versionToDownload) {
+	if (versionToDownload && versionToDownload.rid !== availableUpdate.value?.rid) {
+		versionToDownload = availableUpdate.value
+	}
 	if (!versionToDownload) {
 		handleError(formatMessage(messages.updateDownloadMissingVersion))
 		return
@@ -2160,7 +2152,10 @@ provideAppUpdateDownloadProgress(appUpdateDownload)
 		</div>
 		<div data-tauri-drag-region class="app-grid-statusbar bg-bg-raised h-[--top-bar-height] flex">
 			<div data-tauri-drag-region class="flex min-w-0 flex-1 items-center overflow-hidden p-2">
-				<span class="text-xl font-bold tracking-tight text-contrast pointer-events-none select-none px-1">Mod<span class="text-brand">Bridge</span></span>
+				<span
+					class="text-xl font-bold tracking-tight text-contrast pointer-events-none select-none px-1"
+					>Mod<span class="text-brand">Bridge</span></span
+				>
 				<div data-tauri-drag-region class="ml-2 flex shrink-0 items-center gap-2">
 					<IconButton
 						type="outlined"
@@ -2190,6 +2185,15 @@ provideAppUpdateDownloadProgress(appUpdateDownload)
 				<Breadcrumbs />
 			</div>
 			<section data-tauri-drag-region class="flex shrink-0 ml-auto items-center">
+				<IconButton
+					v-if="hostingRouteActive"
+					type="quiet"
+					:label="formatMessage(messages.hostingSupport)"
+					class="mr-3"
+					@click="openUrl('https://support.modrinth.com')"
+				>
+					<MessageIcon />
+				</IconButton>
 				<IconButton
 					v-if="!forceSidebar && appSettings.toggleSidebar"
 					:type="sidebarToggled ? 'base' : 'quiet'"
@@ -2286,15 +2290,12 @@ provideAppUpdateDownloadProgress(appUpdateDownload)
 				/>
 				<div id="sidebar-teleport-target" class="sidebar-teleport-content"></div>
 				<div class="sidebar-default-content" :class="{ 'sidebar-enabled': sidebarVisible }">
-					<div
-						v-show="hasLoggedIntoMinecraft"
-						class="p-4 border-0 border-b-[1px] border-[--brand-gradient-border] border-solid"
-					>
-						<h3 class="text-base text-primary font-medium m-0">
+					<div class="p-4 border-0 border-b-[1px] border-[--brand-gradient-border] border-solid">
+						<h3 v-if="hasLoggedIntoMinecraft" class="text-base text-primary font-medium m-0">
 							{{ formatMessage(messages.playingAs) }}
 						</h3>
 						<suspense>
-							<AccountsCard ref="accounts" />
+							<AccountsCard ref="accounts" @open="sidebarToggled = true" />
 						</suspense>
 					</div>
 					<PrideFundraiserBanner

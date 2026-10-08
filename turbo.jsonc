@@ -8,6 +8,13 @@
 		"packages/app-lib/.env"
 	],
 	"globalEnv": [
+		"MODBRIDGE_RELAY_BASE_URL",
+		"VITE_MODBRIDGE_RELAY_BASE_URL",
+		"MODBRIDGE_RELAY_AUTH_TOKEN",
+		"VITE_MODBRIDGE_RELAY_AUTH_TOKEN",
+		"MODBRIDGE_RELAY_TOKEN",
+		"VITE_MODBRIDGE_RELAY_TOKEN",
+		"MODBRIDGE_UPDATE_BASE_URL",
 		"MODRINTH_URL",
 		"MODRINTH_API_BASE_URL",
 		"SHARED_INSTANCES_API_BASE_URL",
@@ -87,7 +94,14 @@
 			"persistent": true,
 			"inputs": ["$TURBO_DEFAULT$", ".env*"],
 			"env": ["CARGO_*", "RUST_*", "RUSTFLAGS", "FORCE_COLOR", "NEXTEST_*"],
-			"passThroughEnv": ["DISPLAY", "WEBKIT_DISABLE_DMABUF_RENDERER", "JAVA_HOME"]
+			"passThroughEnv": [
+				"DISPLAY",
+				"WEBKIT_DISABLE_DMABUF_RENDERER",
+				"JAVA_HOME",
+				"MODBRIDGE_CONFIG_DIR",
+				"MODBRIDGE_PORTABLE",
+				"MODBRIDGE_PORTABLE_DIR"
+			]
 		},
 		"test": {
 			"env": [

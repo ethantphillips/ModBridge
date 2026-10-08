@@ -1,7 +1,7 @@
 use crate::data::ModLoader;
 use crate::instance::get_full_path;
 use crate::launcher::get_loader_version_from_profile;
-use crate::server_address::{parse_server_address, resolve_server_address};
+use crate::server_address::parse_server_address;
 use crate::state::attached_world_data::AttachedWorldData;
 use crate::state::{
     InstanceInstallStage, attached_world_data, server_join_log,
@@ -13,7 +13,6 @@ pub use crate::util::server_ping::{
 };
 use crate::util::{io, server_ping};
 use crate::{Error, ErrorKind, Result, State, launcher};
-use async_minecraft_ping::ServerDescription;
 use async_walkdir::WalkDir;
 use async_zip::{Compression, ZipEntryBuilder};
 use chrono::{DateTime, Local, TimeZone, Utc};
@@ -24,7 +23,6 @@ use futures::StreamExt;
 use quartz_nbt::{NbtCompound, NbtTag};
 use regex::{Regex, RegexBuilder};
 use serde::{Deserialize, Serialize};
-use serde_json::value::RawValue;
 use std::cmp::Reverse;
 use std::io::Cursor;
 use std::path::{Path, PathBuf};
@@ -1059,108 +1057,6 @@ pub async fn get_server_status(
         "Pinging {address} with protocol version {protocol_version:?}"
     );
 
-    get_server_status_old(address, protocol_version).await
-    // get_server_status_new(address, protocol_version).await
-}
-
-async fn get_server_status_old(
-    address: &str,
-    protocol_version: Option<ProtocolVersion>,
-) -> Result<ServerStatus> {
-    let (original_host, original_port) = parse_server_address(address)?;
-    let (host, port) =
-        resolve_server_address(original_host, original_port).await?;
-    tracing::debug!(
-        "Pinging {address} with protocol version {protocol_version:?}"
-    );
-    server_ping::get_server_status(
-        &(&host as &str, port),
-        (original_host, original_port),
-        protocol_version,
-    )
-    .await
-}
-
-async fn _get_server_status_new(
-    address: &str,
-    protocol_version: Option<ProtocolVersion>,
-) -> Result<ServerStatus> {
-    let (address, port) = match address.rsplit_once(':') {
-        Some((addr, port)) => {
-            let port = port.parse::<u16>().map_err(|_err| {
-                Error::from(ErrorKind::InputError("invalid port number".into()))
-            })?;
-            (addr, port)
-        }
-        None => (address, 25565),
-    };
-
-    let mut builder = async_minecraft_ping::ConnectionConfig::build(address)
-        .with_port(port)
-        .with_srv_lookup();
-
-    if let Some(version) = protocol_version {
-        builder = builder.with_protocol_version(version.version as usize)
-    }
-
-    let conn = builder.connect().await.map_err(|_err| {
-        Error::from(ErrorKind::InputError("failed to connect to server".into()))
-    })?;
-
-    let ping_conn = conn.status().await.map_err(|_err| {
-        Error::from(ErrorKind::InputError("failed to get server status".into()))
-    })?;
-    let status = &ping_conn.status;
-    let description = match &status.description {
-        ServerDescription::Plain(text) => {
-            serde_json::value::to_raw_value(&text).ok()
-        }
-        ServerDescription::Object { text } => {
-            // TODO: `text` always seems to be empty?
-            RawValue::from_string(text.clone()).ok()
-        }
-    };
-
-    let players = ServerPlayers {
-        max: status.players.max,
-        online: status.players.online,
-        sample: status
-            .players
-            .sample
-            .as_ref()
-            .map(|sample| {
-                sample
-                    .iter()
-                    .map(|player| ServerGameProfile {
-                        id: player.id.clone(),
-                        name: player.name.clone(),
-                    })
-                    .collect()
-            })
-            .unwrap_or_default(),
-    };
-    let version = ServerVersion {
-        name: status.version.name.clone(),
-        protocol: status.version.protocol,
-        legacy: false,
-    };
-    let favicon = status.favicon.as_ref().and_then(|url| url.parse().ok());
-
-    let latency = {
-        let start = Instant::now();
-        let ping_magic = Utc::now().timestamp_millis().cast_unsigned();
-        ping_conn.ping(ping_magic).await.map_err(|_err| {
-            Error::from(ErrorKind::InputError("failed to do ping".into()))
-        })?;
-        start.elapsed().as_millis() as i64
-    };
-
-    Ok(ServerStatus {
-        description,
-        players: Some(players),
-        version: Some(version),
-        favicon,
-        enforces_secure_chat: false,
-        ping: Some(latency),
-    })
+	let original_address = parse_server_address(address)?;
+	server_ping::get_server_status(original_address, protocol_version).await
 }

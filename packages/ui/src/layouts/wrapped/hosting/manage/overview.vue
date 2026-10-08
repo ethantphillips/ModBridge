@@ -54,7 +54,15 @@ import ServerManageStats from '#ui/components/servers/ServerManageStats.vue'
 import { useModrinthServersConsole } from '#ui/composables'
 import { useServerPermissions } from '#ui/composables/server-permissions'
 import { ConsolePageLayout, provideConsoleManager } from '#ui/layouts/shared/console'
-import { injectModrinthClient, injectModrinthServerContext } from '#ui/providers'
+import {
+	injectModrinthClient,
+	injectModrinthServerContext,
+	injectNotificationManager,
+	injectPageContext,
+} from '#ui/providers'
+import { useVIntl } from '#ui/composables/i18n'
+import { commonMessages } from '#ui/utils/common-messages'
+import { saveBlobForClient } from '#ui/utils/file-download'
 
 const props = withDefaults(
 	defineProps<{
@@ -68,6 +76,9 @@ const props = withDefaults(
 )
 
 const client = injectModrinthClient()
+const pageContext = injectPageContext(null)
+const { addNotification } = injectNotificationManager()
+const { formatMessage } = useVIntl()
 const {
 	server: _serverData,
 	serverId,
@@ -176,16 +187,13 @@ if (serverPowerState.value === 'crashed') {
 	void inspectError()
 }
 
-const downloadLog4jDebug = () => {
+const downloadLog4jDebug = async () => {
 	const events = modrinthServersConsole.getWsEventHistory()
 	const blob = new Blob([JSON.stringify(events, null, 2)], { type: 'application/json' })
-	const url = URL.createObjectURL(blob)
-	const a = document.createElement('a')
-	a.href = url
-	a.download = `ws-debug-${serverId}-${Date.now()}.json`
-	document.body.appendChild(a)
-	a.click()
-	document.body.removeChild(a)
-	URL.revokeObjectURL(url)
+	try {
+		await saveBlobForClient(pageContext, blob, `ws-debug-${serverId}-${Date.now()}.json`)
+	} catch {
+		addNotification({ title: formatMessage(commonMessages.downloadFailedLabel), type: 'error' })
+	}
 }
 </script>

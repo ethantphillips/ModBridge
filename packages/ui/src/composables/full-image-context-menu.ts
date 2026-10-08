@@ -1,6 +1,15 @@
+import { injectModrinthClient } from '../providers/api-client'
+
 export function useFullImageContextMenu() {
+	const client = injectModrinthClient(null)
+
 	return function onFullImageContextMenu(event: MouseEvent, fullUrl: string | null | undefined) {
 		if (!fullUrl) return
+		try {
+			fullUrl = client?.resolveMediaUrl(fullUrl) ?? fullUrl
+		} catch {
+			return
+		}
 
 		const img = event.currentTarget as HTMLImageElement
 		const originalSrc = img.src

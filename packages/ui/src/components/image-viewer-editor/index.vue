@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 
+import { injectModrinthClient } from '#ui/providers/api-client'
 import { injectImageViewerEditor } from '#ui/providers/image-viewer-editor'
 
 import Editor from './editor.vue'
@@ -37,6 +38,7 @@ const mode = ref<ImageViewerEditorMode>('view')
 const closeAfterEditing = ref(false)
 const editorComponent = ref<InstanceType<typeof Editor>>()
 const context = injectImageViewerEditor(null)
+const client = injectModrinthClient(null)
 const itemDataCache = new Map<string, Promise<ImageViewerEditorData>>()
 const itemImageCache = new Map<string, HTMLImageElement>()
 
@@ -68,7 +70,7 @@ function loadItemData(item: ImageViewerEditorItem): Promise<ImageViewerEditorDat
 
 	const promise = (async () => {
 		if (item.editorSource && context) return await context.loadEditorData(item.editorSource)
-		const response = await fetch(item.src)
+		const response = await fetch(client?.resolveMediaUrl(item.src) ?? item.src)
 		if (!response.ok) throw new Error(`Could not load image: ${response.statusText}`)
 		return { source: await response.blob() }
 	})()
@@ -95,7 +97,11 @@ function preloadItemImage(item: ImageViewerEditorItem) {
 	}
 
 	const image = new Image()
-	image.src = item.src
+	try {
+		image.src = client?.resolveMediaUrl(item.src) ?? item.src
+	} catch {
+		return
+	}
 	itemImageCache.set(key, image)
 	while (itemImageCache.size > MAX_CACHED_ITEMS) {
 		const oldestKey = itemImageCache.keys().next().value

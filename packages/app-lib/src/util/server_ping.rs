@@ -1,383 +1,155 @@
-use crate::ErrorKind;
 use crate::error::Result;
 use crate::util::protocol_version::ProtocolVersion;
 use serde::{Deserialize, Serialize};
 use serde_json::value::RawValue;
-use std::time::Duration;
-use tokio::net::ToSocketAddrs;
-use tokio::select;
 use url::Url;
 
-const MAX_MINECRAFT_STATUS_STRING_LENGTH: usize = 32_767;
-const MAX_MODERN_STATUS_PACKET_LENGTH: usize =
-    MAX_MINECRAFT_STATUS_STRING_LENGTH + 4;
-const MAX_LEGACY_STATUS_UTF16_LENGTH: usize =
-    MAX_MINECRAFT_STATUS_STRING_LENGTH;
-const SERVER_STATUS_TIMEOUT: Duration = Duration::from_secs(5);
-
-/// Ensures the length of a packet as stated by a server is not longer than a
-/// hard-coded limit.
-///
-/// For example, if we ping a server that says its status packet is 2 billion
-/// bytes long, we don't try to allocate a 2 billion byte buffer, since that
-/// will OOM our machine.
-///
-/// Implemented as a function so that you can easily find callsites and see
-/// where we accept unvalidated input from servers.
-fn cap_length(
-    length: usize,
-    max_length: usize,
-    context: &'static str,
-) -> Result<usize> {
-    if length > max_length {
-        return Err(ErrorKind::InputError(context.to_string()).into());
-    }
-
-    Ok(length)
-}
-
+/// Server status returned by Relay after it resolves and pings the server.
 #[derive(Deserialize, Serialize, Debug, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct ServerStatus {
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub description: Option<Box<RawValue>>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub players: Option<ServerPlayers>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub version: Option<ServerVersion>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub favicon: Option<Url>,
-    #[serde(default)]
-    pub enforces_secure_chat: bool,
-
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub ping: Option<i64>,
+	#[serde(skip_serializing_if = "Option::is_none")]
+	pub description: Option<Box<RawValue>>,
+	#[serde(skip_serializing_if = "Option::is_none")]
+	pub players: Option<ServerPlayers>,
+	#[serde(skip_serializing_if = "Option::is_none")]
+	pub version: Option<ServerVersion>,
+	#[serde(skip_serializing_if = "Option::is_none")]
+	pub favicon: Option<Url>,
+	#[serde(default)]
+	pub enforces_secure_chat: bool,
+	/// Connection and status-response latency measured from Relay, in milliseconds.
+	#[serde(skip_serializing_if = "Option::is_none")]
+	pub ping: Option<i64>,
 }
 
 #[derive(Deserialize, Serialize, Debug, Clone)]
 pub struct ServerPlayers {
-    pub max: i32,
-    pub online: i32,
-    #[serde(default)]
-    pub sample: Vec<ServerGameProfile>,
+	pub max: i32,
+	pub online: i32,
+	#[serde(default)]
+	pub sample: Vec<ServerGameProfile>,
 }
 
 #[derive(Deserialize, Serialize, Debug, Clone)]
 pub struct ServerGameProfile {
-    pub id: String,
-    pub name: String,
+	pub id: String,
+	pub name: String,
 }
 
 #[derive(Deserialize, Serialize, Debug, Clone)]
 pub struct ServerVersion {
-    pub name: String,
-    pub protocol: i32,
-    #[serde(skip_deserializing)]
-    pub legacy: bool,
+	pub name: String,
+	pub protocol: i32,
+	#[serde(default)]
+	pub legacy: bool,
 }
 
 pub async fn get_server_status(
-    address: &impl ToSocketAddrs,
-    original_address: (&str, u16),
-    protocol_version: Option<ProtocolVersion>,
+	original_address: (&str, u16),
+	protocol_version: Option<ProtocolVersion>,
 ) -> Result<ServerStatus> {
-    select! {
-        res = async {
-            match protocol_version {
-                Some(ProtocolVersion { legacy: true, version }) => legacy::status(address, original_address, Some(version as u8)).await,
-                protocol => modern::status(address, original_address, protocol.map(|v| v.version)).await,
-            }
-        } => res,
-        _ = tokio::time::sleep(SERVER_STATUS_TIMEOUT) => Err(ErrorKind::OtherError(
-            format!("Ping of {}:{} timed out", original_address.0, original_address.1)
-        ).into())
-    }
+	get_server_status_with_base(
+		original_address,
+		protocol_version,
+		crate::util::relay::get_relay_base_url(),
+		&crate::util::fetch::INSECURE_REQWEST_CLIENT,
+	)
+	.await
 }
 
-mod modern {
-    use super::ServerStatus;
-    use crate::ErrorKind;
-    use std::time::Instant;
-    use tokio::io::{AsyncReadExt, AsyncWriteExt};
-    use tokio::net::{TcpStream, ToSocketAddrs};
-
-    pub async fn status(
-        address: &impl ToSocketAddrs,
-        original_address: (&str, u16),
-        protocol_version: Option<u32>,
-    ) -> crate::Result<ServerStatus> {
-        let mut stream = TcpStream::connect(address).await?;
-        stream.set_nodelay(true)?;
-        handshake(&mut stream, original_address, protocol_version).await?;
-        let mut result = status_body(&mut stream).await?;
-        result.ping = ping(&mut stream).await.ok();
-        Ok(result)
-    }
-
-    async fn handshake(
-        stream: &mut TcpStream,
-        original_address: (&str, u16),
-        protocol_version: Option<u32>,
-    ) -> crate::Result<()> {
-        let (host, port) = original_address;
-        let protocol_version = protocol_version.map_or(-1, |x| x as i32);
-
-        const PACKET_ID: i32 = 0;
-        const NEXT_STATE: i32 = 1;
-
-        let packet_size = varint::get_byte_size(PACKET_ID)
-            + varint::get_byte_size(protocol_version)
-            + varint::get_byte_size(host.len() as i32)
-            + host.len()
-            + size_of::<u16>()
-            + varint::get_byte_size(NEXT_STATE);
-
-        let mut packet_buffer = Vec::with_capacity(
-            varint::get_byte_size(packet_size as i32) + packet_size,
-        );
-
-        varint::write(&mut packet_buffer, packet_size as i32);
-        varint::write(&mut packet_buffer, PACKET_ID);
-        varint::write(&mut packet_buffer, protocol_version);
-        varint::write(&mut packet_buffer, host.len() as i32);
-        packet_buffer.extend_from_slice(host.as_bytes());
-        packet_buffer.extend_from_slice(&port.to_be_bytes());
-        varint::write(&mut packet_buffer, NEXT_STATE);
-
-        stream.write_all(&packet_buffer).await?;
-        stream.flush().await?;
-
-        Ok(())
-    }
-
-    async fn status_body(
-        stream: &mut TcpStream,
-    ) -> crate::Result<ServerStatus> {
-        stream.write_all(&[0x01, 0x00]).await?;
-        stream.flush().await?;
-
-        let packet_length = cap_varint_length(
-            varint::read(stream).await?,
-            super::MAX_MODERN_STATUS_PACKET_LENGTH,
-            "invalid status response packet length",
-        )?;
-
-        let mut packet_stream = stream.take(packet_length as u64);
-        let packet_id = varint::read(&mut packet_stream).await?;
-        if packet_id != 0x00 {
-            return Err(ErrorKind::InputError(
-                "Unexpected status response".to_string(),
-            )
-            .into());
-        }
-        let response_length = cap_varint_length(
-            varint::read(&mut packet_stream).await?,
-            super::MAX_MINECRAFT_STATUS_STRING_LENGTH,
-            "invalid status response length",
-        )?;
-        let mut json_response = vec![0_u8; response_length];
-        packet_stream.read_exact(&mut json_response).await?;
-
-        if packet_stream.limit() > 0 {
-            tokio::io::copy(&mut packet_stream, &mut tokio::io::sink()).await?;
-        }
-
-        Ok(serde_json::from_slice(&json_response)?)
-    }
-
-    /// Ensures the length of a varint as stated by a server is not longer than a
-    /// hard-coded limit.
-    ///
-    /// For example, if we ping a server that says its status packet is 2 billion
-    /// bytes long, we don't try to allocate a 2 billion byte buffer, since that
-    /// will OOM our machine.
-    ///
-    /// Implemented as a function so that you can easily find callsites and see
-    /// where we accept unvalidated input from servers.
-    fn cap_varint_length(
-        length: i32,
-        max_length: usize,
-        context: &'static str,
-    ) -> crate::Result<usize> {
-        if length < 0 {
-            return Err(ErrorKind::InputError(context.to_string()).into());
-        }
-
-        super::cap_length(length as usize, max_length, context)
-    }
-
-    async fn ping(stream: &mut TcpStream) -> crate::Result<i64> {
-        let ping_magic = chrono::Utc::now().timestamp_millis();
-
-        let start_time = Instant::now();
-        stream.write_all(&[0x09, 0x01]).await?;
-        stream.write_i64(ping_magic).await?;
-        stream.flush().await?;
-
-        let mut response_prefix = [0_u8; 2];
-        stream.read_exact(&mut response_prefix).await?;
-        let response_magic = stream.read_i64().await?;
-        if response_prefix != [0x09, 0x01] || response_magic != ping_magic {
-            return Err(ErrorKind::InputError(
-                "Unexpected ping response".to_string(),
-            )
-            .into());
-        }
-
-        Ok(start_time.elapsed().as_millis() as i64)
-    }
-
-    mod varint {
-        use std::io;
-        use tokio::io::{AsyncRead, AsyncReadExt};
-
-        const MAX_VARINT_SIZE: usize = 5;
-        const DATA_BITS_MASK: u32 = 0x7f;
-        const CONT_BIT_MASK_U8: u8 = 0x80;
-        const CONT_BIT_MASK_U32: u32 = CONT_BIT_MASK_U8 as u32;
-        const DATA_BITS_PER_BYTE: usize = 7;
-
-        pub fn get_byte_size(x: i32) -> usize {
-            let x = x as u32;
-            for size in 1..MAX_VARINT_SIZE {
-                if (x & (u32::MAX << (size * DATA_BITS_PER_BYTE))) == 0 {
-                    return size;
-                }
-            }
-            MAX_VARINT_SIZE
-        }
-
-        pub fn write(out: &mut Vec<u8>, value: i32) {
-            let mut value = value as u32;
-            while value >= CONT_BIT_MASK_U32 {
-                out.push(((value & DATA_BITS_MASK) | CONT_BIT_MASK_U32) as u8);
-                value >>= DATA_BITS_PER_BYTE;
-            }
-            out.push(value as u8);
-        }
-
-        pub async fn read<R: AsyncRead + Unpin>(
-            reader: &mut R,
-        ) -> io::Result<i32> {
-            let mut result = 0;
-            let mut shift = 0;
-
-            loop {
-                let b = reader.read_u8().await?;
-                result |=
-                    (b as u32 & DATA_BITS_MASK) << (shift * DATA_BITS_PER_BYTE);
-                shift += 1;
-                if shift > MAX_VARINT_SIZE {
-                    return Err(io::Error::new(
-                        io::ErrorKind::InvalidData,
-                        "VarInt too big",
-                    ));
-                }
-                if b & CONT_BIT_MASK_U8 == 0 {
-                    return Ok(result as i32);
-                }
-            }
-        }
-    }
+async fn get_server_status_with_base(
+	original_address: (&str, u16),
+	protocol_version: Option<ProtocolVersion>,
+	relay_base: &str,
+	client: &reqwest::Client,
+) -> Result<ServerStatus> {
+	let (host, port) = original_address;
+	let address = if host.contains(':') {
+		format!("[{host}]:{port}")
+	} else {
+		format!("{host}:{port}")
+	};
+	let mut body = serde_json::json!({"address": address});
+	if let Some(protocol) = protocol_version {
+		body["protocol"] = serde_json::json!(protocol);
+	}
+	let response = crate::util::relay::relay_request_with_base(
+		client,
+		reqwest::Method::POST,
+		&format!("{}/server/status", relay_base.trim_end_matches('/')),
+		relay_base,
+		crate::util::relay::get_relay_token(),
+	)?
+	.json(&body)
+	.timeout(std::time::Duration::from_secs(10))
+	.send()
+	.await?
+	.error_for_status()?;
+	Ok(response.json().await?)
 }
 
-mod legacy {
-    use super::ServerStatus;
-    use crate::worlds::{ServerPlayers, ServerVersion};
-    use crate::{Error, ErrorKind};
-    use serde_json::value::to_raw_value;
-    use tokio::io::{AsyncReadExt, AsyncWriteExt};
-    use tokio::net::{TcpStream, ToSocketAddrs};
+#[cfg(test)]
+mod tests {
+	use super::*;
 
-    pub async fn status(
-        address: &impl ToSocketAddrs,
-        original_address: (&str, u16),
-        protocol_version: Option<u8>,
-    ) -> crate::Result<ServerStatus> {
-        let protocol_version = protocol_version.unwrap_or(74);
-
-        let mut packet = vec![0xfe];
-        if protocol_version >= 47 {
-            packet.push(0x01);
-        }
-        if protocol_version >= 73 {
-            packet.push(0xfa);
-            write_legacy(&mut packet, "MC|PingHost");
-
-            let (host, port) = original_address;
-            let len_index = packet.len();
-            packet.push(protocol_version);
-            write_legacy(&mut packet, host);
-            packet.extend_from_slice(&(port as u32).to_be_bytes());
-            packet.splice(
-                len_index..len_index,
-                ((packet.len() - len_index) as u16).to_be_bytes(),
-            );
-        }
-
-        let mut stream = TcpStream::connect(address).await?;
-        stream.write_all(&packet).await?;
-        stream.flush().await?;
-
-        let packet_id = stream.read_u8().await?;
-        if packet_id != 0xff {
-            return Err(Error::from(ErrorKind::InputError(
-                "Unexpected legacy status response".to_string(),
-            )));
-        }
-
-        let data_length = super::cap_length(
-            stream.read_u16().await? as usize,
-            super::MAX_LEGACY_STATUS_UTF16_LENGTH,
-            "invalid legacy status response length",
-        )?;
-        let data_byte_length = data_length.checked_mul(2).ok_or_else(|| {
-            ErrorKind::InputError(
-                "invalid legacy status response length".to_string(),
-            )
-        })?;
-        let mut data = vec![0u8; data_byte_length];
-        stream.read_exact(&mut data).await?;
-
-        drop(stream);
-
-        let data = String::from_utf16_lossy(
-            &data
-                .chunks_exact(2)
-                .map(|a| u16::from_be_bytes([a[0], a[1]]))
-                .collect::<Vec<u16>>(),
-        );
-        let mut ancient_server = false;
-        let mut parts = data.split('\0');
-        if parts.next() != Some("§1") {
-            ancient_server = true;
-            parts = data.split('§');
-        }
-
-        Ok(ServerStatus {
-            version: (!ancient_server).then(|| ServerVersion {
-                protocol: parts
-                    .next()
-                    .and_then(|x| x.parse().ok())
-                    .unwrap_or(0),
-                name: parts.next().unwrap_or("").to_owned(),
-                legacy: true,
-            }),
-            description: parts.next().and_then(|x| to_raw_value(x).ok()),
-            players: Some(ServerPlayers {
-                online: parts.next().and_then(|x| x.parse().ok()).unwrap_or(-1),
-                max: parts.next().and_then(|x| x.parse().ok()).unwrap_or(-1),
-                sample: vec![],
-            }),
-            favicon: None,
-            enforces_secure_chat: false,
-            ping: None,
-        })
-    }
-
-    fn write_legacy(out: &mut Vec<u8>, text: &str) {
-        let encoded = text.encode_utf16().collect::<Vec<_>>();
-        out.extend_from_slice(&(encoded.len() as u16).to_be_bytes());
-        out.extend(encoded.into_iter().flat_map(u16::to_be_bytes));
-    }
+	#[tokio::test]
+	async fn requests_remote_server_status_only_from_relay() {
+		use tokio::io::{AsyncReadExt, AsyncWriteExt};
+		let listener =
+			tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+		let base = format!("http://{}", listener.local_addr().unwrap());
+		let server = tokio::spawn(async move {
+			let (mut stream, _) = listener.accept().await.unwrap();
+			let mut received = Vec::new();
+			loop {
+				let mut buffer = [0; 4096];
+				let size = stream.read(&mut buffer).await.unwrap();
+				assert!(size > 0);
+				received.extend_from_slice(&buffer[..size]);
+				if let Some(start) =
+					received.windows(4).position(|chunk| chunk == b"\r\n\r\n")
+				{
+					if let Ok(body) = serde_json::from_slice::<serde_json::Value>(
+						&received[start + 4..],
+					) {
+						assert!(
+							received.starts_with(
+								b"POST /server/status HTTP/1.1\r\n"
+							)
+						);
+						assert_eq!(
+							body,
+							serde_json::json!({
+								"address": "minecraft.example:25565",
+								"protocol": {"version": 74, "legacy": true},
+							})
+						);
+						break;
+					}
+				}
+			}
+			let body = serde_json::json!({
+				"description": {"text": "Relay status"},
+				"players": {"max": 20, "online": 2},
+				"version": {"name": "1.6.4", "protocol": 74, "legacy": true},
+				"enforcesSecureChat": false,
+				"ping": 12,
+			})
+			.to_string();
+			stream.write_all(format!("HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}", body.len()).as_bytes()).await.unwrap();
+		});
+		let status = get_server_status_with_base(
+			("minecraft.example", 25565),
+			Some(ProtocolVersion::legacy(74)),
+			&base,
+			&reqwest::Client::builder().no_proxy().build().unwrap(),
+		)
+		.await
+		.unwrap();
+		assert_eq!(status.ping, Some(12));
+		assert!(status.version.unwrap().legacy);
+		assert!(status.players.unwrap().sample.is_empty());
+		server.await.unwrap();
+	}
 }

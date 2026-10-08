@@ -19,6 +19,7 @@ import { Button } from '#ui/components/base/buttons'
 
 import { useFormatPrice } from '../../composables'
 import { useVIntl } from '../../composables/i18n'
+import { injectModrinthClient } from '../../providers/api-client'
 import { getPriceForInterval, monthsInInterval } from '../../utils/product-utils'
 import { regionOverrides } from '../../utils/regions'
 import Checkbox from '../base/Checkbox.vue'
@@ -30,6 +31,7 @@ import type { ServerBillingInterval } from './ModrinthServersPurchaseModal.vue'
 import ServersSpecs from './ServersSpecs.vue'
 
 const { formatMessage } = useVIntl()
+const client = injectModrinthClient(null)
 const formatPrice = useFormatPrice()
 
 const emit = defineEmits<{
@@ -151,11 +153,12 @@ const planSpecs = computed(() => {
 	return null
 })
 
-const flag = computed(
-	() =>
+const flag = computed(() => {
+	const url =
 		regionOverrides[props.region.shortcode]?.flag ??
-		`https://flagcdn.com/${props.region.country_code}.svg`,
-)
+		`https://flagcdn.com/${props.region.country_code}.svg`
+	return client?.resolveMediaUrl(url) ?? url
+})
 const overrideTitle = computed(() => regionOverrides[props.region.shortcode]?.name)
 const title = computed(() =>
 	overrideTitle.value ? formatMessage(overrideTitle.value) : props.region.display_name,

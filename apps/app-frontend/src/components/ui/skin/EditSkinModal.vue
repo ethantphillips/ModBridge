@@ -148,6 +148,8 @@ import {
 import { arrayBufferToBase64 } from '@modrinth/utils'
 import { computed, nextTick, ref, useTemplateRef, watch } from 'vue'
 
+import { resolveRelayMediaUrl } from '@/config'
+
 import {
 	type Cape,
 	determineModelType,
@@ -219,8 +221,8 @@ const messages = defineMessages({
 		defaultMessage: 'Make an edit to the skin first!',
 	},
 	demoSaveTooltip: {
-		id: 'app.skins.modal.demo-save-tooltip',
-		defaultMessage: 'Sign in to save skins.',
+		id: 'app.skins.modal.offline-profile-required-save-tooltip',
+		defaultMessage: 'Create an offline profile to save skins.',
 	},
 	addSkinButton: {
 		id: 'app.skins.modal.add-skin-button',
@@ -248,7 +250,9 @@ const previewSkin = ref<string>('')
 
 const variant = ref<SkinModel>('CLASSIC')
 const selectedCape = ref<Cape | undefined>(undefined)
-const props = defineProps<{ capes?: Cape[]; demo?: boolean }>()
+const props = withDefaults(defineProps<{ capes?: Cape[]; demo?: boolean; canApply?: boolean }>(), {
+	canApply: true,
+})
 
 const selectedCapeTexture = computed(() => selectedCape.value?.texture)
 const canEditTextureAndModel = computed(() => currentSkin.value?.source !== 'default')
@@ -445,7 +449,9 @@ async function save() {
 			textureUrl = currentSkin.value!.texture
 		}
 
-		const bytes: Uint8Array = new Uint8Array(await (await fetch(textureUrl)).arrayBuffer())
+		const response = await fetch(resolveRelayMediaUrl(textureUrl))
+		if (!response.ok) throw new Error(`Could not load skin texture: ${response.status}`)
+		const bytes = new Uint8Array(await response.arrayBuffer())
 
 		if (mode.value === 'new') {
 			const addedSkin = await save_custom_skin(
@@ -475,12 +481,13 @@ async function save() {
 				!!uploadedTextureUrl.value && textureUrl !== currentSkin.value?.texture,
 			)
 
-			if (currentSkin.value?.is_equipped) {
+			const applied = !!currentSkin.value?.is_equipped && props.canApply
+			if (applied) {
 				await equip_skin(updatedSkin)
 			}
 
 			emit('saved', {
-				applied: !!currentSkin.value?.is_equipped,
+				applied,
 				skin: updatedSkin,
 				previousSkin: currentSkin.value!,
 			})

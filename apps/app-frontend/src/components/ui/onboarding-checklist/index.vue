@@ -11,12 +11,8 @@ const emit = defineEmits<{
 }>()
 
 const { formatMessage } = useVIntl()
-const {
-	hasCreatedInstance,
-	hasLoggedIntoMinecraft,
-	isReady,
-	showChecklist,
-} = injectOnboardingChecklist()
+const { hasCreatedInstance, hasLoggedIntoMinecraft, isReady, showChecklist } =
+	injectOnboardingChecklist()
 const collapsedCornersVisible = ref(false)
 let collapseTimer: ReturnType<typeof setTimeout> | undefined
 
@@ -30,8 +26,8 @@ const messages = defineMessages({
 		defaultMessage: 'Create first instance',
 	},
 	loginMinecraft: {
-		id: 'onboarding-checklist.login-minecraft',
-		defaultMessage: 'Sign in to Minecraft',
+		id: 'onboarding-checklist.create-offline-profile',
+		defaultMessage: 'Create offline profile',
 	},
 })
 

@@ -802,7 +802,13 @@ async fn install_shared_instance_external_file(
         .into());
     }
 
-    let response = REQWEST_CLIENT.get(&file.url).send().await?;
+	let response = crate::util::fetch::relay_request(
+		&REQWEST_CLIENT,
+		reqwest::Method::GET,
+		&file.url,
+	)?
+	.send()
+	.await?;
 
     if !response.status().is_success() {
         return Err(crate::ErrorKind::OtherError(format!(

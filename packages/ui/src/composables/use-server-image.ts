@@ -92,7 +92,7 @@ export function useServerImage(
 			try {
 				const project = await client.labrinth.projects_v2.get(upstream.value.project_id)
 				if (!project.icon_url) return null
-				const response = await fetch(project.icon_url)
+				const response = await fetch(client.resolveMediaUrl(project.icon_url))
 				if (!response.ok) return null
 				const blob = await response.blob()
 				return await processImageBlob(blob, iconSize)

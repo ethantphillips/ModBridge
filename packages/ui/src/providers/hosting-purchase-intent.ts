@@ -1,7 +1,7 @@
 import type { Labrinth } from '@modrinth/api-client'
 import { type Ref, ref, watch } from 'vue'
 
-import { createContext } from '.'
+import { createContext } from './create-context'
 
 const PURCHASE_INTENT_STORAGE_KEY = 'modrinth:servers-purchase-intent'
 
@@ -43,6 +43,7 @@ export interface CreateHostingPurchaseIntentContextOptions {
 	guestPlanModal: Ref<GuestPlanModalHandle | null>
 	checkoutModal: Ref<CheckoutModalHandle | null>
 	onCheckoutPending: () => void
+	openExternalCheckout?: () => void
 }
 
 function readPendingPurchaseIntent(): PendingPurchaseIntent | null {
@@ -110,10 +111,18 @@ export function createHostingPurchaseIntentContext(
 	}
 
 	function openPurchaseModal() {
+		if (options.openExternalCheckout) {
+			options.openExternalCheckout()
+			return
+		}
 		options.guestPlanModal.value?.show(lastSelectedInterval.value, lastSelectedPlanId.value)
 	}
 
 	function handleGuestPlanContinue(payload: GuestPlanContinuePayload) {
+		if (options.openExternalCheckout) {
+			options.openExternalCheckout()
+			return
+		}
 		const intent: PendingPurchaseIntent = {
 			interval: payload.interval,
 			planId: payload.planId,

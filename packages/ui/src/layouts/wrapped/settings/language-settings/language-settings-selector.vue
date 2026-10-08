@@ -12,11 +12,13 @@ import {
 	useVIntl,
 } from '#ui/composables/i18n'
 import { metaLocaleModules } from '#ui/locales.ts'
+import { injectModrinthClient } from '#ui/providers/api-client'
 import { isModifierKeyDown } from '#ui/utils/events'
 
 import type { LanguageCoverageStats } from './language-settings-coverage'
 
 const { formatMessage } = useVIntl()
+const client = injectModrinthClient(null)
 
 const props = defineProps<{
 	product: 'app' | 'website'
@@ -86,7 +88,8 @@ function getFlagUrl(tag: string): string | undefined {
 	const region = localeFlagRegions[tag] ?? tag.split('-').at(-1)
 	if (!region || !/^[a-z]{2}$/i.test(region)) return undefined
 
-	return `https://flagcdn.com/${region.toLowerCase()}.svg`
+	const url = `https://flagcdn.com/${region.toLowerCase()}.svg`
+	return client?.resolveMediaUrl(url) ?? url
 }
 
 const $locales = computed(() => {

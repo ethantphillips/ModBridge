@@ -29,6 +29,10 @@ pub use event::{
 pub use logger::start_logger;
 pub use state::State;
 pub use util::fetch::DownloadReason;
+pub use util::relay::{
+	RelayRoutingError, get_relay_base_url, get_relay_token, get_update_base_url,
+	is_relay_url, route_url_through_relay,
+};
 
 pub fn launcher_user_agent() -> String {
     const LAUNCHER_BASE_USER_AGENT: &str =

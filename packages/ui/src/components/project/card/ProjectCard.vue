@@ -21,7 +21,7 @@
 				/>
 				<img
 					v-else
-					src="https://cdn.modrinth.com/landing-new/landing.webp"
+					:src="fallbackBannerUrl"
 					alt=""
 					class="absolute w-full h-full inset-0 object-cover object-center placeholder-banner scale-[200%]"
 				/>
@@ -194,6 +194,7 @@ import dayjs from 'dayjs'
 import { computed } from 'vue'
 import type { RouteLocationRaw } from 'vue-router'
 
+import { injectModrinthClient } from '../../../providers/api-client'
 import { AutoLink, Avatar } from '../../base'
 import { SmartClickable } from '../../base/index.ts'
 import ProjectStatusBadge from '../ProjectStatusBadge.vue'
@@ -210,6 +211,11 @@ import ProjectCardEnvironment, {
 import ProjectCardStats from './ProjectCardStats.vue'
 import ProjectCardTags from './ProjectCardTags.vue'
 import ProjectCardTitle from './ProjectCardTitle.vue'
+
+const client = injectModrinthClient(null)
+const fallbackBannerUrl =
+	client?.resolveMediaUrl('https://cdn.modrinth.com/landing-new/landing.webp') ??
+	'https://cdn.modrinth.com/landing-new/landing.webp'
 
 defineEmits<{
 	mouseenter: []

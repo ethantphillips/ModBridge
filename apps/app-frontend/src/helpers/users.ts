@@ -1,5 +1,6 @@
 import type { Labrinth } from '@modrinth/api-client'
-import { invoke } from '@tauri-apps/api/core'
+
+import { invokeWithRelayUrls as invoke } from './relay-invoke'
 
 // Converts user profile links from rendered Markdown/any dynamic content into app routes.
 export function parse_modrinth_user_link(href: string): string | null {

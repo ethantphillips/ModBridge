@@ -1,5 +1,5 @@
 use crate::ErrorKind;
-use crate::util::fetch::INSECURE_REQWEST_CLIENT;
+use crate::util::fetch::{INSECURE_REQWEST_CLIENT, relay_request};
 use base64::Engine;
 use base64::prelude::{BASE64_STANDARD, BASE64_URL_SAFE_NO_PAD};
 use chrono::{DateTime, Duration, TimeZone, Utc};
@@ -11,8 +11,8 @@ use p256::ecdsa::{Signature, SigningKey, VerifyingKey};
 use p256::pkcs8::{DecodePrivateKey, EncodePrivateKey, LineEnding};
 use rand::Rng;
 use rand::rngs::OsRng;
+use reqwest::StatusCode;
 use reqwest::header::HeaderMap;
-use reqwest::{Response, StatusCode};
 use serde::de::DeserializeOwned;
 use serde::ser::SerializeStruct;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
@@ -20,7 +20,6 @@ use serde_json::json;
 use sha2::Digest;
 use std::borrow::Cow;
 use std::collections::HashMap;
-use std::future::Future;
 use std::hash::{BuildHasherDefault, DefaultHasher};
 use std::io;
 use std::ops::Deref;
@@ -47,6 +46,8 @@ pub enum MinecraftAuthStep {
 
 #[derive(thiserror::Error, Debug)]
 pub enum MinecraftAuthenticationError {
+    #[error("Relay routing failed: {0}")]
+    RelayRouting(#[from] crate::util::relay::RelayRoutingError),
     #[error("Error reading public key during generation")]
     ReadingPublicKey,
     #[error("Failed to serialize private key to PEM: {0}")]
@@ -274,7 +275,7 @@ impl Credentials {
     pub async fn create_offline_user(
         username: &str,
         pin: &str,
-        exec: impl sqlx::Executor<'_, Database = sqlx::Sqlite> + Copy,
+        pool: &sqlx::SqlitePool,
     ) -> crate::Result<Self> {
         let uuid = crate::state::derive_offline_uuid(username, pin)
             .map_err(|e| crate::ErrorKind::InputError(e.to_string()))?;
@@ -294,8 +295,83 @@ impl Credentials {
             active: true,
         };
 
-        credentials.upsert(exec).await?;
+        let mut tx = pool.begin().await?;
+        sqlx::query("UPDATE minecraft_users SET active = FALSE")
+            .execute(&mut *tx)
+            .await?;
+        sqlx::query(
+            "INSERT INTO minecraft_users (uuid, active, username, access_token, refresh_token, expires)
+            VALUES (?, TRUE, ?, '0', '', ?)
+            ON CONFLICT (uuid) DO UPDATE SET
+                active = TRUE,
+                username = excluded.username,
+                access_token = '0',
+                refresh_token = '',
+                expires = excluded.expires",
+        )
+        .bind(uuid.to_string())
+        .bind(&credentials.offline_profile.name)
+        .bind(credentials.expires.timestamp())
+        .execute(&mut *tx)
+        .await?;
+        tx.commit().await?;
         Ok(credentials)
+    }
+
+    pub async fn set_active(
+        uuid: Uuid,
+        pool: &sqlx::SqlitePool,
+    ) -> crate::Result<()> {
+        let mut tx = pool.begin().await?;
+        let uuid = uuid.to_string();
+        let exists: bool = sqlx::query_scalar(
+            "SELECT EXISTS(SELECT 1 FROM minecraft_users WHERE uuid = ?)",
+        )
+        .bind(&uuid)
+        .fetch_one(&mut *tx)
+        .await?;
+        if !exists {
+            return Err(crate::ErrorKind::InputError(format!(
+                "Tried to select nonexistent user with ID {uuid}"
+            ))
+            .into());
+        }
+        sqlx::query("UPDATE minecraft_users SET active = (uuid = ?)")
+            .bind(uuid)
+            .execute(&mut *tx)
+            .await?;
+        tx.commit().await?;
+        Ok(())
+    }
+
+    pub async fn remove_and_select(
+        uuid: Uuid,
+        pool: &sqlx::SqlitePool,
+    ) -> crate::Result<()> {
+        let mut tx = pool.begin().await?;
+        let uuid = uuid.to_string();
+        let active: Option<bool> = sqlx::query_scalar(
+            "SELECT active FROM minecraft_users WHERE uuid = ?",
+        )
+        .bind(&uuid)
+        .fetch_optional(&mut *tx)
+        .await?;
+        sqlx::query("DELETE FROM minecraft_users WHERE uuid = ?")
+            .bind(uuid)
+            .execute(&mut *tx)
+            .await?;
+        if active == Some(true) {
+            sqlx::query(
+                "UPDATE minecraft_users SET active = (uuid = (
+                    SELECT uuid FROM minecraft_users
+                    ORDER BY username COLLATE NOCASE, uuid LIMIT 1
+                ))",
+            )
+            .execute(&mut *tx)
+            .await?;
+        }
+        tx.commit().await?;
+        Ok(())
     }
 
     /// Refreshes the authentication tokens for this user if they are expired, or
@@ -703,26 +779,31 @@ impl Serialize for Credentials {
         // Opportunistically hydrate the profile with its online data if possible for frontend
         // consumption, transparently handling all the possible Tokio runtime states the current
         // thread may be in the most efficient way
-        let profile = match Handle::try_current().ok() {
-            Some(runtime)
-                if runtime.runtime_flavor() == RuntimeFlavor::CurrentThread =>
-            {
-                runtime.block_on(self.maybe_online_profile())
+        let profile = if self.is_offline() {
+            MaybeOnlineMinecraftProfile::Offline(&self.offline_profile)
+        } else {
+            match Handle::try_current().ok() {
+                Some(runtime)
+                    if runtime.runtime_flavor()
+                        == RuntimeFlavor::CurrentThread =>
+                {
+                    runtime.block_on(self.maybe_online_profile())
+                }
+                Some(runtime) => task::block_in_place(|| {
+                    runtime.block_on(self.maybe_online_profile())
+                }),
+                None => tokio::runtime::Builder::new_current_thread()
+                    .enable_all()
+                    .build()
+                    .map_or_else(
+                        |_| {
+                            MaybeOnlineMinecraftProfile::Offline(
+                                &self.offline_profile,
+                            )
+                        },
+                        |runtime| runtime.block_on(self.maybe_online_profile()),
+                    ),
             }
-            Some(runtime) => task::block_in_place(|| {
-                runtime.block_on(self.maybe_online_profile())
-            }),
-            None => tokio::runtime::Builder::new_current_thread()
-                .enable_all()
-                .build()
-                .map_or_else(
-                    |_| {
-                        MaybeOnlineMinecraftProfile::Offline(
-                            &self.offline_profile,
-                        )
-                    },
-                    |runtime| runtime.block_on(self.maybe_online_profile()),
-                ),
         };
 
         let mut ser = serializer.serialize_struct("Credentials", 5)?;
@@ -1004,13 +1085,15 @@ async fn oauth_token(
     query.insert("redirect_uri", AUTH_REPLY_URL);
     query.insert("scope", REQUESTED_SCOPE);
 
-    let res = auth_retry(|| {
-        INSECURE_REQWEST_CLIENT
-            .post("https://login.live.com/oauth20_token.srf")
-            .header("Accept", "application/json")
-            .form(&query)
-            .send()
-    })
+    let res = auth_retry(
+        relay_request(
+            &INSECURE_REQWEST_CLIENT,
+            reqwest::Method::POST,
+            "https://login.live.com/oauth20_token.srf",
+        )?
+        .header("Accept", "application/json")
+        .form(&query),
+    )
     .await
     .map_err(|source| MinecraftAuthenticationError::Request {
         source,
@@ -1052,13 +1135,15 @@ async fn oauth_refresh(
     query.insert("redirect_uri", AUTH_REPLY_URL);
     query.insert("scope", REQUESTED_SCOPE);
 
-    let res = auth_retry(|| {
-        INSECURE_REQWEST_CLIENT
-            .post("https://login.live.com/oauth20_token.srf")
-            .header("Accept", "application/json")
-            .form(&query)
-            .send()
-    })
+    let res = auth_retry(
+        relay_request(
+            &INSECURE_REQWEST_CLIENT,
+            reqwest::Method::POST,
+            "https://login.live.com/oauth20_token.srf",
+        )?
+        .header("Accept", "application/json")
+        .form(&query),
+    )
     .await
     .map_err(|source| MinecraftAuthenticationError::Request {
         source,
@@ -1197,20 +1282,19 @@ async fn minecraft_token(
 
     let token = token.token;
 
-    let res = auth_retry(|| {
-        crate::util::fetch::relay_request(
+    let res = auth_retry(
+        relay_request(
             &INSECURE_REQWEST_CLIENT,
             reqwest::Method::POST,
             "https://api.minecraftservices.com/launcher/login",
-        )
+        )?
         .header("Accept", "application/json")
         .header("User-Agent", MINECRAFT_SERVICES_USER_AGENT)
         .json(&json!({
             "platform": "PC_LAUNCHER",
             "xtoken": format!("XBL3.0 x={uhs};{token}"),
-        }))
-        .send()
-    })
+        })),
+    )
     .await
     .map_err(|source| MinecraftAuthenticationError::Request {
         source,
@@ -1429,20 +1513,19 @@ impl Deref for MaybeOnlineMinecraftProfile<'_> {
 async fn minecraft_profile(
     token: &str,
 ) -> Result<MinecraftProfile, MinecraftAuthenticationError> {
-    let res = auth_retry(|| {
-        crate::util::fetch::relay_request(
+    let res = auth_retry(
+        relay_request(
             &INSECURE_REQWEST_CLIENT,
             reqwest::Method::GET,
             "https://api.minecraftservices.com/minecraft/profile",
-        )
+        )?
         .header("Accept", "application/json")
         .header("User-Agent", MINECRAFT_SERVICES_USER_AGENT)
         .bearer_auth(token)
         // Profiles may be refreshed periodically in response to user actions,
         // so we want each refresh to be fast
-        .timeout(std::time::Duration::from_secs(10))
-        .send()
-    })
+        .timeout(std::time::Duration::from_secs(10)),
+    )
     .await
     .map_err(|source| MinecraftAuthenticationError::Request {
         source,
@@ -1484,17 +1567,16 @@ struct MinecraftEntitlements {}
 async fn minecraft_entitlements(
     token: &str,
 ) -> Result<MinecraftEntitlements, MinecraftAuthenticationError> {
-    let res = auth_retry(|| {
-		crate::util::fetch::relay_request(
+    let res = auth_retry(
+		relay_request(
 			&INSECURE_REQWEST_CLIENT,
 			reqwest::Method::GET,
 			&format!("https://api.minecraftservices.com/entitlements/license?requestId={}", Uuid::new_v4()),
-		)
+		)?
 		.header("Accept", "application/json")
 		.header("User-Agent", MINECRAFT_SERVICES_USER_AGENT)
-		.bearer_auth(token)
-		.send()
-	})
+		.bearer_auth(token),
+	)
     .await.map_err(|source| MinecraftAuthenticationError::Request { source, step: MinecraftAuthStep::MinecraftEntitlements })?;
 
     let status = res.status();
@@ -1517,17 +1599,21 @@ async fn minecraft_entitlements(
 
 // auth utils
 #[tracing::instrument(skip(reqwest_request))]
-async fn auth_retry<F>(
-    reqwest_request: impl Fn() -> F,
-) -> Result<reqwest::Response, reqwest::Error>
-where
-    F: Future<Output = Result<Response, reqwest::Error>>,
-{
+async fn auth_retry(
+    reqwest_request: reqwest::RequestBuilder,
+) -> Result<reqwest::Response, reqwest::Error> {
     const RETRY_COUNT: usize = 5; // Does command 9 times
     const RETRY_WAIT: std::time::Duration =
         std::time::Duration::from_millis(250);
 
-    let mut resp = reqwest_request().await;
+    let request = reqwest_request.build()?;
+    let mut resp = INSECURE_REQWEST_CLIENT
+        .execute(
+            request
+                .try_clone()
+                .expect("Authentication requests have buffered bodies"),
+        )
+        .await;
     for i in 0..RETRY_COUNT {
         match &resp {
             Ok(_) => {
@@ -1540,7 +1626,11 @@ where
                             "Request failed with connect error, retrying...",
                         );
                         tokio::time::sleep(RETRY_WAIT).await;
-                        resp = reqwest_request().await;
+                        resp = INSECURE_REQWEST_CLIENT
+                            .execute(request.try_clone().expect(
+                                "Authentication requests have buffered bodies",
+                            ))
+                            .await;
                     } else {
                         break;
                     }
@@ -1632,25 +1722,23 @@ async fn send_signed_request<T: DeserializeOwned>(
 
     let signature = BASE64_STANDARD.encode(&sig_buffer);
 
-    let res = auth_retry(|| {
-        let mut request = INSECURE_REQWEST_CLIENT
-            .post(url)
+    let mut request =
+        relay_request(&INSECURE_REQWEST_CLIENT, reqwest::Method::POST, url)?
             .header("Content-Type", "application/json; charset=utf-8")
             .header("Accept", "application/json")
             .header("Signature", &signature);
 
-        if url != "https://sisu.xboxlive.com/authorize" {
-            request = request.header("x-xbl-contract-version", "1");
-        }
+    if url != "https://sisu.xboxlive.com/authorize" {
+        request = request.header("x-xbl-contract-version", "1");
+    }
 
-        if let Some(auth) = authorization {
-            request = request.header("Authorization", auth);
-        }
+    if let Some(auth) = authorization {
+        request = request.header("Authorization", auth);
+    }
 
-        request.body(body.clone()).send()
-    })
-    .await
-    .map_err(|source| MinecraftAuthenticationError::Request { source, step })?;
+    let res = auth_retry(request.body(body)).await.map_err(|source| {
+        MinecraftAuthenticationError::Request { source, step }
+    })?;
 
     let status = res.status();
     let headers = res.headers().clone();
@@ -1691,4 +1779,201 @@ fn generate_oauth_challenge() -> String {
 
     let bytes: Vec<u8> = (0..64).map(|_| rng.r#gen::<u8>()).collect();
     bytes.iter().map(|byte| format!("{byte:02x}")).collect()
+}
+
+#[cfg(test)]
+mod offline_account_tests {
+    use super::*;
+    use sqlx::sqlite::SqliteConnectOptions;
+
+    async fn open_test_pool(path: &std::path::Path) -> sqlx::SqlitePool {
+        sqlx::SqlitePool::connect_with(
+            SqliteConnectOptions::new()
+                .filename(path)
+                .create_if_missing(true),
+        )
+        .await
+        .unwrap()
+    }
+
+    async fn test_pool(path: &std::path::Path) -> sqlx::SqlitePool {
+        let pool = open_test_pool(path).await;
+        sqlx::query(
+            "CREATE TABLE minecraft_users (
+                uuid TEXT PRIMARY KEY NOT NULL,
+                active INTEGER NOT NULL DEFAULT FALSE,
+                username TEXT NOT NULL,
+                access_token TEXT NOT NULL,
+                refresh_token TEXT NOT NULL,
+                expires INTEGER NOT NULL
+            )",
+        )
+        .execute(&pool)
+        .await
+        .unwrap();
+        pool
+    }
+
+    #[tokio::test]
+    async fn offline_accounts_persist_without_pin_or_network() {
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("accounts.db");
+        let pool = test_pool(&path).await;
+        let credentials = Credentials::create_offline_user(
+            " Steve ",
+            " confidential-pin ",
+            &pool,
+        )
+        .await
+        .unwrap();
+        let uuid = credentials.offline_profile.id;
+        assert_eq!(credentials.offline_profile.name, "Steve");
+        assert!(credentials.is_offline());
+        assert!(credentials.online_profile().await.is_none());
+        assert!(credentials.online_profile_fresh().await.is_none());
+        assert!(credentials.refresh_online_profile().await.is_none());
+
+        let serialized = serde_json::to_value(&credentials).unwrap();
+        assert_eq!(serialized["profile"]["id"], uuid.to_string());
+        assert_eq!(serialized["access_token"], "0");
+        assert_eq!(serialized["refresh_token"], "");
+        assert!(!serialized.to_string().contains("confidential-pin"));
+
+        pool.close().await;
+        let pool = open_test_pool(&path).await;
+        let active = Credentials::get_active(&pool).await.unwrap().unwrap();
+        assert_eq!(active.offline_profile.id, uuid);
+        assert_eq!(active.offline_profile.name, "Steve");
+        assert!(active.active);
+
+        let same_account = Credentials::create_offline_user(
+            "STEVE",
+            "confidential-pin",
+            &pool,
+        )
+        .await
+        .unwrap();
+        assert_eq!(same_account.offline_profile.id, uuid);
+        assert_eq!(Credentials::get_all(&pool).await.unwrap().len(), 1);
+        sqlx::query("UPDATE minecraft_users SET expires = 0")
+            .execute(&pool)
+            .await
+            .unwrap();
+        let active = Credentials::get_default_credential(&pool)
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(active.offline_profile.id, uuid);
+        assert_eq!(active.offline_profile.name, "STEVE");
+        pool.close().await;
+        let contents = std::fs::read(path).unwrap();
+        assert!(
+            !contents
+                .windows(b"confidential-pin".len())
+                .any(|window| window == b"confidential-pin")
+        );
+    }
+
+    #[tokio::test]
+    async fn account_selection_and_removal_preserve_a_valid_default() {
+        let directory = tempfile::tempdir().unwrap();
+        let pool = test_pool(&directory.path().join("accounts.db")).await;
+        let steve = Credentials::create_offline_user("Steve", "1234", &pool)
+            .await
+            .unwrap()
+            .offline_profile
+            .id;
+        let alex = Credentials::create_offline_user("Alex", "1234", &pool)
+            .await
+            .unwrap()
+            .offline_profile
+            .id;
+        let player = Credentials::create_offline_user("Player", "1234", &pool)
+            .await
+            .unwrap()
+            .offline_profile
+            .id;
+        let missing = Uuid::new_v4();
+        assert!(Credentials::set_active(missing, &pool).await.is_err());
+        assert_eq!(
+            Credentials::get_active(&pool)
+                .await
+                .unwrap()
+                .unwrap()
+                .offline_profile
+                .id,
+            player
+        );
+        Credentials::set_active(steve, &pool).await.unwrap();
+        Credentials::remove_and_select(player, &pool).await.unwrap();
+        Credentials::remove_and_select(missing, &pool)
+            .await
+            .unwrap();
+        assert_eq!(
+            Credentials::get_active(&pool)
+                .await
+                .unwrap()
+                .unwrap()
+                .offline_profile
+                .id,
+            steve
+        );
+        Credentials::remove_and_select(steve, &pool).await.unwrap();
+        assert_eq!(
+            Credentials::get_active(&pool)
+                .await
+                .unwrap()
+                .unwrap()
+                .offline_profile
+                .id,
+            alex
+        );
+        assert_eq!(Credentials::get_all(&pool).await.unwrap().len(), 1);
+        Credentials::remove_and_select(alex, &pool).await.unwrap();
+        assert!(Credentials::get_active(&pool).await.unwrap().is_none());
+        assert!(Credentials::get_all(&pool).await.unwrap().is_empty());
+    }
+
+    #[tokio::test]
+    async fn failed_account_creation_keeps_the_existing_default() {
+        let directory = tempfile::tempdir().unwrap();
+        let pool = test_pool(&directory.path().join("accounts.db")).await;
+        let steve = Credentials::create_offline_user("Steve", "1234", &pool)
+            .await
+            .unwrap()
+            .offline_profile
+            .id;
+        sqlx::query(
+            "CREATE TRIGGER reject_account BEFORE INSERT ON minecraft_users
+            WHEN NEW.username = 'Alex'
+            BEGIN SELECT RAISE(ABORT, 'simulated write failure'); END",
+        )
+        .execute(&pool)
+        .await
+        .unwrap();
+        assert!(
+            Credentials::create_offline_user("Alex", "1234", &pool)
+                .await
+                .is_err()
+        );
+        assert!(
+            Credentials::create_offline_user(
+                "name_that_is_too_long",
+                "1234",
+                &pool,
+            )
+            .await
+            .is_err()
+        );
+        assert_eq!(
+            Credentials::get_active(&pool)
+                .await
+                .unwrap()
+                .unwrap()
+                .offline_profile
+                .id,
+            steve
+        );
+        assert_eq!(Credentials::get_all(&pool).await.unwrap().len(), 1);
+    }
 }

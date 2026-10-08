@@ -4,6 +4,8 @@ import type Stripe from 'stripe'
 import { nextTick, ref, useTemplateRef } from 'vue'
 
 import { Button } from '#ui/components/base/buttons'
+import { injectModrinthClient } from '#ui/providers/api-client'
+import { injectPageContext } from '#ui/providers/page-context'
 
 import { defineMessages, useVIntl } from '../../composables/i18n'
 import { commonMessages } from '../../utils'
@@ -12,6 +14,8 @@ import type { AddPaymentMethodProps } from './AddPaymentMethod.vue'
 import AddPaymentMethod from './AddPaymentMethod.vue'
 
 const { formatMessage } = useVIntl()
+const client = injectModrinthClient(null)
+const pageContext = injectPageContext(null)
 
 const modal = useTemplateRef<InstanceType<typeof NewModal>>('modal')
 const addPaymentMethod = useTemplateRef<InstanceType<typeof AddPaymentMethod>>('addPaymentMethod')
@@ -20,6 +24,10 @@ const props = defineProps<AddPaymentMethodProps>()
 const loading = ref(false)
 
 async function open(paymentMethods: Stripe.PaymentMethod[]) {
+	if (client?.allowExternalEmbeds === false) {
+		pageContext?.openExternalUrl('https://modrinth.com/settings/billing')
+		return
+	}
 	modal.value?.show()
 	await nextTick()
 	await addPaymentMethod.value?.reload(paymentMethods)

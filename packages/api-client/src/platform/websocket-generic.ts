@@ -14,6 +14,7 @@ export class GenericWebSocketClient extends AbstractWebSocketClient {
 	protected emitter = mitt<WSEventMap>()
 
 	async connect(serverId: string, auth: Archon.Websocket.v0.WSAuth): Promise<void> {
+		const reconnectAttempts = this.connections.get(serverId)?.reconnectAttempts ?? 0
 		if (this.connections.has(serverId)) {
 			this.closeConnection(serverId)
 		}
@@ -34,15 +35,16 @@ export class GenericWebSocketClient extends AbstractWebSocketClient {
 				reject(error)
 			}
 			try {
-				const ws = new WebSocket(getNodeWebSocketUrl(auth.url))
+				const url = getNodeWebSocketUrl(auth.url)
+				const ws = new WebSocket(this.client.resolveWebSocketUrl?.(url) ?? url)
 
 				const connection: WebSocketConnection = {
 					serverId,
 					socket: ws,
 					authenticated: false,
-					reconnectAttempts: 0,
+					reconnectAttempts,
 					reconnectTimer: undefined,
-					isReconnecting: false,
+					isReconnecting: reconnectAttempts > 0,
 				}
 
 				this.connections.set(serverId, connection)
@@ -53,9 +55,6 @@ export class GenericWebSocketClient extends AbstractWebSocketClient {
 
 				ws.onopen = () => {
 					ws.send(JSON.stringify({ event: 'auth', jwt: auth.token }))
-
-					connection.reconnectAttempts = 0
-					connection.isReconnecting = false
 				}
 
 				ws.onmessage = (messageEvent) => {
@@ -63,6 +62,8 @@ export class GenericWebSocketClient extends AbstractWebSocketClient {
 						const data = JSON.parse(messageEvent.data) as Archon.Websocket.v0.WSEvent
 						if (data.event === 'auth-ok') {
 							connection.authenticated = true
+							connection.reconnectAttempts = 0
+							connection.isReconnecting = false
 						} else if (data.event === 'auth-incorrect') {
 							connection.authenticated = false
 						}
@@ -93,13 +94,14 @@ export class GenericWebSocketClient extends AbstractWebSocketClient {
 							`WebSocket closed before authentication for server ${serverId} (code: ${event.code})`,
 						),
 					)
-					if (event.code !== NORMAL_CLOSURE) {
+					if (event.code !== NORMAL_CLOSURE && this.connections.get(serverId) === connection) {
 						this.scheduleReconnect(serverId, auth)
 					}
 				}
 
 				ws.onerror = (event) => {
-					const url = ws.url
+					const { origin, pathname } = new URL(ws.url)
+					const url = `${origin}${pathname}`
 					const readyState = ws.readyState
 					console.error(`[WebSocket] Error for server ${serverId}:`, {
 						url,

@@ -5,8 +5,10 @@ import { getPingLevel } from '@modrinth/utils'
 import { computed } from 'vue'
 
 import { useVIntl } from '../../composables/i18n'
+import { injectModrinthClient } from '../../providers/api-client'
 import { regionOverrides } from '../../utils/regions'
 const { formatMessage } = useVIntl()
+const client = injectModrinthClient(null)
 
 const currentRegion = defineModel<string | undefined>({ required: true })
 
@@ -18,11 +20,12 @@ const props = defineProps<{
 }>()
 
 const isCurrentRegion = computed(() => currentRegion.value === props.region.shortcode)
-const flag = computed(
-	() =>
+const flag = computed(() => {
+	const url =
 		regionOverrides[props.region.shortcode]?.flag ??
-		`https://flagcdn.com/${props.region.country_code}.svg`,
-)
+		`https://flagcdn.com/${props.region.country_code}.svg`
+	return client?.resolveMediaUrl(url) ?? url
+})
 const overrideTitle = computed(() => regionOverrides[props.region.shortcode]?.name)
 const title = computed(() =>
 	overrideTitle.value ? formatMessage(overrideTitle.value) : props.region.display_name,

@@ -169,8 +169,13 @@ const messages = defineMessages({
 		defaultMessage: 'Apply',
 	},
 	demoApplyTooltip: {
-		id: 'app.skins.demo.apply-tooltip',
-		defaultMessage: 'Sign in to apply skins.',
+		id: 'app.skins.apply.online-account-required',
+		defaultMessage: 'Applying a skin in Minecraft requires an online Minecraft account.',
+	},
+	offlineSkinsDescription: {
+		id: 'app.skins.offline-description',
+		defaultMessage:
+			'Save, edit, and preview skins for this offline profile. Applying skins or capes in Minecraft requires an online account.',
 	},
 	editSkinButton: {
 		id: 'app.skins.preview.edit-button',
@@ -189,16 +194,16 @@ const messages = defineMessages({
 		defaultMessage: 'Toggle on',
 	},
 	demoTitle: {
-		id: 'app.skins.demo.title',
-		defaultMessage: 'Editing with a demo account',
+		id: 'app.skins.preview.no-profile-title',
+		defaultMessage: 'Previewing without a profile',
 	},
 	demoDescription: {
-		id: 'app.skins.demo.description',
-		defaultMessage: 'Create an offline profile to save and apply skins!',
+		id: 'app.skins.preview.create-offline-profile-description',
+		defaultMessage: 'Create an offline profile to save and preview skins.',
 	},
 	signInButton: {
-		id: 'app.skins.sign-in.button',
-		defaultMessage: 'Create Offline Profile',
+		id: 'app.skins.create-offline-profile-button',
+		defaultMessage: 'Create offline profile',
 	},
 })
 
@@ -215,10 +220,17 @@ const client = injectModrinthClient()
 const appSettings = useAppSettings()
 const skins = ref<Skin[]>([])
 const capes = ref<Cape[]>([])
-const offline = ref(false)
+const offline = ref(!navigator.onLine)
 
 const accountsCard = inject('accountsCard') as Ref<typeof AccountsCard>
-const currentUser = ref(undefined)
+const currentUser = ref<
+	| {
+			profile: { id: string; name: string }
+			access_token: string
+			refresh_token: string
+	  }
+	| undefined
+>(undefined)
 const currentUserId = ref<string | undefined>(undefined)
 
 const username = computed(() => currentUser.value?.profile?.name ?? undefined)
@@ -335,11 +347,19 @@ const skinTexture = computedAsync(async () => {
 const capeTexture = computed(() => currentCape.value?.texture)
 const skinVariant = computed(() => selectedSkin.value?.variant)
 const skinNametag = computed(() => (appSettings.hideNametagSkinsPage ? undefined : username.value))
-const isSkinManagementReadOnly = computed(
+const currentUserIsOffline = computed(
 	() =>
 		!!currentUser.value &&
-		(offline.value || (authServerQuery.isError.value && !authServerQuery.isLoading.value)),
+		(currentUser.value.access_token === '0' || !currentUser.value.refresh_token),
 )
+const canApplySkins = computed(
+	() =>
+		!!currentUser.value &&
+		!currentUserIsOffline.value &&
+		!offline.value &&
+		!(authServerQuery.isError.value && !authServerQuery.isLoading.value),
+)
+const isSkinManagementReadOnly = computed(() => isApplyingSkin.value)
 const hasPendingSkinChange = computed(
 	() => !skinsMatch(selectedSkin.value, originalSelectedSkin.value),
 )
@@ -463,7 +483,11 @@ function isSkinSelected(skin: Skin) {
 }
 
 function isSkinActive(skin: Skin) {
-	return hasPendingSkinChange.value && skinsMatch(originalSelectedSkin.value, skin)
+	return (
+		!currentUserIsOffline.value &&
+		hasPendingSkinChange.value &&
+		skinsMatch(originalSelectedSkin.value, skin)
+	)
 }
 
 function getErrorMessage(error: unknown) {
@@ -754,7 +778,7 @@ function schedulePendingSkinRefresh() {
 async function applySelectedSkin() {
 	const skinToApply = selectedSkin.value
 	if (
-		!currentUser.value ||
+		!canApplySkins.value ||
 		!skinToApply ||
 		!hasPendingSkinChange.value ||
 		isApplyingSkin.value ||
@@ -1021,7 +1045,7 @@ onUnmounted(() => {
 })
 
 function onOffline() {
-	offline.value = false
+	offline.value = true
 }
 
 function onOnline() {
@@ -1054,6 +1078,7 @@ await loadSkins()
 		ref="editSkinModal"
 		:capes="capes"
 		:demo="!currentUser"
+		:can-apply="canApplySkins"
 		@saved="onSkinSaved"
 		@deleted="() => loadSkins()"
 	/>
@@ -1077,6 +1102,9 @@ await loadSkins()
 			<h1 class="m-0 text-2xl font-bold flex items-center gap-2">
 				{{ formatMessage(appMessages.skinSelectorLabel) }}
 			</h1>
+			<p v-if="currentUserIsOffline" class="text-sm text-secondary">
+				{{ formatMessage(messages.offlineSkinsDescription) }}
+			</p>
 			<div
 				class="ml-5 mt-4 flex h-[calc(80vh-1rem)] items-center justify-center max-[700px]:h-[calc(50vh-1rem)]"
 			>
@@ -1128,7 +1156,7 @@ await loadSkins()
 								</Button>
 								<Button
 									v-tooltip="
-										!currentUser
+										!canApplySkins
 											? formatMessage(messages.demoApplyTooltip)
 											: selectedSkinHasEarsFeatures
 												? formatMessage(messages.applyButton)
@@ -1138,7 +1166,7 @@ await loadSkins()
 									color="brand"
 									size="lg"
 									class="skin-preview-action-button"
-									:disabled="!currentUser || isApplyingSkin || isSkinManagementReadOnly"
+									:disabled="!canApplySkins || isApplyingSkin"
 									:aria-label="formatMessage(messages.applyButton)"
 									@click="applySelectedSkin"
 								>
@@ -1266,12 +1294,7 @@ await loadSkins()
 					</p>
 				</div>
 			</div>
-			<Button
-				v-show="accountsCard"
-				type="colored"
-				color="brand"
-				@click="login"
-			>
+			<Button v-show="accountsCard" type="colored" color="brand" @click="login">
 				<PlusIcon />
 				{{ formatMessage(messages.signInButton) }}
 			</Button>

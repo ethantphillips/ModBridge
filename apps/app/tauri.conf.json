@@ -102,13 +102,17 @@
 			"capabilities": ["core", "plugins"],
 			"csp": {
 				"default-src": "'self' customprotocol: asset:",
-				"connect-src": "ipc: http://ipc.localhost https://br-divine-snow-ahjav8i1-relay.compute.c-3.us-east-1.aws.neon.tech https://br-divine-snow-ahjav8i1-updates.compute.c-3.us-east-1.aws.neon.tech wss://br-divine-snow-ahjav8i1-relay.compute.c-3.us-east-1.aws.neon.tech https://*.neon.tech https://*.aws.neon.tech https://api.mclo.gs https://fill.papermc.io https://api.purpurmc.org https://github.com https://*.github.com https://*.githubusercontent.com 'self' data: blob:",
-				"font-src": ["https://br-divine-snow-ahjav8i1-relay.compute.c-3.us-east-1.aws.neon.tech", "https://*.neon.tech", "https://*.aws.neon.tech"],
-				"img-src": "https: 'unsafe-inline' 'self' asset: http://asset.localhost blob: data:",
+				"connect-src": "ipc: http://ipc.localhost https://br-divine-snow-ahjav8i1-relay.compute.c-3.us-east-1.aws.neon.tech https://br-divine-snow-ahjav8i1-updates.compute.c-3.us-east-1.aws.neon.tech wss://br-divine-snow-ahjav8i1-relay.compute.c-3.us-east-1.aws.neon.tech 'self' data: blob:",
+				"font-src": [
+					"'self'",
+					"https://br-divine-snow-ahjav8i1-relay.compute.c-3.us-east-1.aws.neon.tech",
+					"data:"
+				],
+				"img-src": "https://br-divine-snow-ahjav8i1-relay.compute.c-3.us-east-1.aws.neon.tech https://br-divine-snow-ahjav8i1-updates.compute.c-3.us-east-1.aws.neon.tech 'self' asset: http://asset.localhost blob: data:",
 				"style-src": "'unsafe-inline' 'self'",
-				"script-src": "https://js.stripe.com https://widget.intercom.io https://js.intercomcdn.com https://tally.so/widgets/embed.js 'self'",
-				"frame-src": "https://www.youtube.com https://www.youtube-nocookie.com https://discord.com https://tally.so/popup/ https://js.stripe.com https://hooks.stripe.com https://*.intercom.io https://intercom-sheets.com https://www.intercom-reporting.com https://app.intercom.com 'self'",
-				"media-src": "https://*.githubusercontent.com"
+				"script-src": "'self'",
+				"frame-src": "'self'",
+				"media-src": "https://br-divine-snow-ahjav8i1-relay.compute.c-3.us-east-1.aws.neon.tech https://br-divine-snow-ahjav8i1-updates.compute.c-3.us-east-1.aws.neon.tech 'self' blob: data:"
 			}
 		}
 	}

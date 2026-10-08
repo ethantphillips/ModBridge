@@ -1,15 +1,19 @@
+<script setup lang="ts">
+import { injectModrinthClient } from '#ui/providers/api-client'
+
+const client = injectModrinthClient(null)
+const darkBackgroundUrl =
+	client?.resolveMediaUrl('https://cdn.modrinth.com/medal-banner-background.webp') ??
+	'https://cdn.modrinth.com/medal-banner-background.webp'
+const lightBackgroundUrl =
+	client?.resolveMediaUrl('https://cdn.modrinth.com/medal-banner-background-light.webp') ??
+	'https://cdn.modrinth.com/medal-banner-background-light.webp'
+</script>
+
 <template>
 	<div class="overlay"></div>
-	<img
-		src="https://cdn.modrinth.com/medal-banner-background.webp"
-		class="background-pattern dark-pattern shadow-xl"
-		alt=""
-	/>
-	<img
-		src="https://cdn.modrinth.com/medal-banner-background-light.webp"
-		class="background-pattern light-pattern shadow-xl"
-		alt=""
-	/>
+	<img :src="darkBackgroundUrl" class="background-pattern dark-pattern shadow-xl" alt="" />
+	<img :src="lightBackgroundUrl" class="background-pattern light-pattern shadow-xl" alt="" />
 </template>
 
 <style scoped lang="scss">

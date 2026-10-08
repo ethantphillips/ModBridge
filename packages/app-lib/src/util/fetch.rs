@@ -1,8 +1,6 @@
 //! Functions for fetching information from the Internet
 use super::io::{self, IOError};
-pub use super::relay::{
-	get_relay_base_url, get_relay_token, relay_request, route_url_through_relay,
-};
+pub use super::relay::relay_request;
 use crate::event::LoadingBarId;
 use crate::event::emit::emit_loading;
 use crate::util::content_hash::{ContentHasher, temporary_file};
@@ -340,6 +338,7 @@ fn reqwest_client_builder_with_timeout() -> reqwest::ClientBuilder {
 
 fn reqwest_client_builder() -> reqwest::ClientBuilder {
     reqwest::Client::builder()
+		.redirect(super::relay::relay_redirect_policy())
         .connect_timeout(Duration::from_secs(15))
         .tcp_keepalive(Some(Duration::from_secs(10)))
         .user_agent(crate::launcher_user_agent())
@@ -965,14 +964,14 @@ async fn fetch_advanced_with_target(
     let _permit =
         crate::install::control::download_step(semaphore.0.acquire()).await??;
 
-    let is_api_url = url.starts_with(env!("MODRINTH_API_URL"))
-        || url.starts_with(env!("MODRINTH_API_URL_V3"));
+	let modrinth_route = super::relay::modrinth_route(url);
+	let is_api_url = modrinth_route == Some(super::relay::ModrinthRoute::Api);
     let fence_key = if is_api_url { uri_path } else { None };
 
     let creds = if header
         .as_ref()
         .is_none_or(|x| &*x.0.to_lowercase() != "authorization")
-        && (url.starts_with("https://cdn.modrinth.com") || is_api_url)
+		&& modrinth_route.is_some()
     {
         crate::state::ModrinthCredentials::get_active(exec).await?
     } else {
@@ -996,30 +995,7 @@ async fn fetch_advanced_with_target(
             .into());
         }
 
-		let target_url = route_url_through_relay(url);
-
-		// HARD INTEGRITY CHECK: Never allow direct communication with Mojang or Modrinth
-		if (target_url.contains("modrinth.com") || target_url.contains("mojang.com") || target_url.contains("minecraft.net"))
-			&& !target_url.starts_with(get_relay_base_url())
-		{
-			tracing::error!(
-				"CRITICAL SECURITY VIOLATION: Direct connection to {} is strictly forbidden! Must be routed through ModBridge Relay.",
-				target_url
-			);
-			return Err(ErrorKind::OtherError(format!(
-				"CRITICAL SECURITY VIOLATION: Direct connection to {} is strictly forbidden! Must be routed through ModBridge Relay.",
-				target_url
-			))
-			.into());
-		}
-
-		let mut req = client.request(method.clone(), &target_url);
-
-		if let Some(token) = get_relay_token() {
-			if target_url != url || target_url.starts_with(get_relay_base_url()) {
-				req = req.header("X-Modbridge-Token", token);
-			}
-		}
+		let mut req = relay_request(client, method.clone(), url)?;
 
         if let Some(body) = &json_body {
             req = req.json(body);
@@ -1186,7 +1162,8 @@ pub async fn post_json(
 ) -> crate::Result<()> {
     let _permit = semaphore.0.acquire().await?;
 
-    let mut req = INSECURE_REQWEST_CLIENT.post(url).json(&json_body);
+	let mut req = relay_request(&INSECURE_REQWEST_CLIENT, Method::POST, url)?
+		.json(&json_body);
 
     if let Some(creds) =
         crate::state::ModrinthCredentials::get_active(exec).await?

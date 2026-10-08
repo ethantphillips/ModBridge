@@ -7,6 +7,8 @@ import type { Labrinth } from '@modrinth/api-client'
 import type { ContentItem, ContentOwner } from '@modrinth/ui'
 import { convertFileSrc, invoke } from '@tauri-apps/api/core'
 
+import { resolveRelayMediaUrl } from '@/config'
+
 import type { InstallJobSnapshot, SharedInstanceUpdateDiff } from './install'
 import type {
 	CacheBehaviour,
@@ -20,7 +22,13 @@ import type {
 
 export function getInstanceIconUrl(iconPath: string | null | undefined): string | null {
 	if (!iconPath) return null
-	if (iconPath.startsWith('http://') || iconPath.startsWith('https://')) return iconPath
+	if (iconPath.startsWith('http://') || iconPath.startsWith('https://')) {
+		try {
+			return resolveRelayMediaUrl(iconPath)
+		} catch {
+			return null
+		}
+	}
 	return convertFileSrc(iconPath)
 }
 

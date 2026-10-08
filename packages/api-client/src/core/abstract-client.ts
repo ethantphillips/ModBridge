@@ -58,6 +58,28 @@ export abstract class AbstractModrinthClient extends AbstractUploadClient {
 		this.initializeModules()
 	}
 
+	/** Resolve a service or media URL using the application's transport policy. */
+	public resolveUrl(url: string): string {
+		return this.config.resolveUrl?.(url) ?? url
+	}
+
+	/** Resolve a browser-loaded media URL using the application's media transport policy. */
+	public resolveMediaUrl(url: string): string {
+		return this.config.resolveMediaUrl?.(url) ?? this.resolveUrl(url)
+	}
+
+	public resolveWebSocketUrl(url: string): string {
+		return this.config.resolveWebSocketUrl?.(url) ?? this.resolveUrl(url)
+	}
+
+	public get allowExternalEmbeds(): boolean {
+		return this.config.allowExternalEmbeds !== false
+	}
+
+	private resolveRequestUrl(context: RequestContext): void {
+		context.url = this.resolveUrl(context.url)
+	}
+
 	/**
 	 * This creates the nested API structure (e.g., client.labrinth.projects_v2)
 	 * but doesn't instantiate modules until first access
@@ -235,6 +257,7 @@ export abstract class AbstractModrinthClient extends AbstractUploadClient {
 				return feature.execute(next, context)
 			} else {
 				// We've reached the end of the chain, execute the actual request
+				this.resolveRequestUrl(context)
 				await this.config.hooks?.onRequest?.(context)
 				return executeTerminal()
 			}
@@ -264,6 +287,7 @@ export abstract class AbstractModrinthClient extends AbstractUploadClient {
 			if (index >= 0) {
 				return applicableFeatures[index].execute(next, context)
 			} else {
+				this.resolveRequestUrl(context)
 				await this.config.hooks?.onRequest?.(context)
 				return this.executeXHRUpload<T>(context, progressCallbacks, abortController)
 			}

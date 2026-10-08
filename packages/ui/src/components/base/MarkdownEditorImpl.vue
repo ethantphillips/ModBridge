@@ -39,11 +39,7 @@
 				<span class="label__description"></span>
 			</span>
 			<div class="markdown-body-wrapper">
-				<div
-					style="width: 100%"
-					class="markdown-body"
-					v-html="renderHighlightedString(linkMarkdown)"
-				/>
+				<div style="width: 100%" class="markdown-body" v-html="renderPreview(linkMarkdown)" />
 			</div>
 			<div class="flex gap-2 justify-end mt-4">
 				<Button type="outlined" @click="() => linkModal?.hide()">
@@ -135,11 +131,7 @@
 				<span class="label__description"></span>
 			</span>
 			<div class="markdown-body-wrapper">
-				<div
-					style="width: 100%"
-					class="markdown-body"
-					v-html="renderHighlightedString(imageMarkdown)"
-				/>
+				<div style="width: 100%" class="markdown-body" v-html="renderPreview(imageMarkdown)" />
 			</div>
 			<div class="flex gap-2 justify-end mt-4">
 				<Button type="outlined" @click="() => imageModal?.hide()">
@@ -193,11 +185,7 @@
 			</span>
 
 			<div class="markdown-body-wrapper">
-				<div
-					style="width: 100%"
-					class="markdown-body"
-					v-html="renderHighlightedString(videoMarkdown)"
-				/>
+				<div style="width: 100%" class="markdown-body" v-html="renderPreview(videoMarkdown)" />
 			</div>
 			<div class="flex gap-2 justify-end mt-4">
 				<Button type="outlined" @click="() => videoModal?.hide()">
@@ -291,7 +279,7 @@
 						overflowY: 'auto',
 					}"
 					class="markdown-body"
-					v-html="renderHighlightedString(currentValue ?? '')"
+					v-html="renderPreview(currentValue ?? '')"
 				/>
 			</div>
 		</div>
@@ -330,9 +318,11 @@ import { type Component, computed, onBeforeUnmount, onMounted, ref, toRef, useId
 
 import Button from '#ui/components/base/buttons/Button.vue'
 import IconButton from '#ui/components/base/buttons/IconButton.vue'
+import { injectModrinthClient } from '#ui/providers/api-client'
 
 import { defineMessages, type MessageDescriptor, useVIntl } from '../../composables/i18n'
 import { commonMessages } from '../../utils/common-messages.ts'
+import { renderForClient } from '../../utils/render-for-client'
 import NewModal from '../modal/NewModal.vue'
 import Chips from './Chips.vue'
 import FileInput from './FileInput.vue'
@@ -342,6 +332,15 @@ import IntlFormatted from './IntlFormatted.vue'
 import Toggle from './Toggle.vue'
 
 const { formatMessage } = useVIntl()
+const client = injectModrinthClient(null)
+
+function renderPreview(markdown: string) {
+	return renderForClient(
+		renderHighlightedString(markdown),
+		client,
+		formatMessage(commonMessages.openInBrowserButton),
+	)
+}
 
 const messages = defineMessages({
 	insertButton: {
@@ -996,6 +995,9 @@ const youtubeRegex =
 const videoMarkdown = computed(() => {
 	const match = youtubeRegex.exec(linkUrl.value)
 	if (match) {
+		if (client?.allowExternalEmbeds === false) {
+			return `[${formatMessage(commonMessages.openInBrowserButton)}](https://www.youtube.com/watch?v=${match[1]})`
+		}
 		return `<iframe width="560" height="315" src="https://www.youtube-nocookie.com/embed/${match[1]}" title="${formatMessage(messages.videoEmbedTitle)}" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" allowfullscreen></iframe>`
 	}
 	return ''

@@ -14,6 +14,7 @@ fn main() {
                     .commands(&[
                         "check_reachable",
                         "login",
+						"add_offline_user",
                         "remove_user",
                         "get_default_user",
                         "set_default_user",
@@ -420,6 +421,8 @@ fn main() {
                         "file_delete",
                         "file_save_as",
                         "file_read_dragged_file",
+                        "download_file_to_user_destination",
+                        "save_blob_to_user_destination",
                     ])
                     .default_permission(
                         DefaultPermissionRule::AllowAllCommands,

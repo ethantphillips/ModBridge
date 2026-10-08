@@ -11,7 +11,7 @@ use ariadne::networking::message::{
 };
 use ariadne::users::UserStatus;
 use async_tungstenite::WebSocketSender;
-use async_tungstenite::tokio::{ConnectStream, connect_async};
+use async_tungstenite::tokio::ConnectStream;
 use async_tungstenite::tungstenite::Message;
 use async_tungstenite::tungstenite::client::IntoClientRequest;
 use bytes::Bytes;
@@ -86,19 +86,26 @@ impl FriendsSocket {
             ModrinthCredentials::get_and_refresh(exec, semaphore).await?;
 
         if let Some(credentials) = credentials {
-            let mut request = format!(
-                "{}_internal/launcher_socket?code={}",
-                env!("MODRINTH_SOCKET_URL"),
-                credentials.session
-            )
-            .into_client_request()?;
+			let mut upstream = url::Url::parse("wss://api.modrinth.com/_internal/launcher_socket")?;
+			upstream.query_pairs_mut().append_pair("code", &credentials.session);
+			let socket_url = crate::util::relay::route_websocket_url_through_relay(upstream.as_str())?;
+			let mut request = socket_url.into_client_request()?;
 
             request.headers_mut().insert(
                 "User-Agent",
                 HeaderValue::from_str(&crate::launcher_user_agent()).unwrap(),
             );
+			if let Some(token) = crate::util::relay::get_relay_token() {
+				let mut token = HeaderValue::from_str(token).map_err(|error| {
+						ErrorKind::InputError(format!(
+							"Invalid Relay token header: {error}"
+						))
+					})?;
+				token.set_sensitive(true);
+				request.headers_mut().insert("X-Modbridge-Token", token);
+			}
 
-            let res = connect_async(request).await;
+            let res = crate::util::relay::connect_relay_websocket(request).await;
 
             match res {
                 Ok((socket, _)) => {
@@ -130,8 +137,7 @@ impl FriendsSocket {
                         let mut read_stream = read;
                         while let Some(msg_result) = read_stream.next().await {
                             if connection_generation_handle
-                                .load(Ordering::Acquire)
-                                != connection_generation
+								.load(Ordering::Acquire) != connection_generation
                             {
                                 break;
                             }
@@ -250,8 +256,7 @@ impl FriendsSocket {
                         {
                             let mut write = write_handle.write().await;
                             if connection_generation_handle
-                                .load(Ordering::Acquire)
-                                == connection_generation
+								.load(Ordering::Acquire) == connection_generation
                             {
                                 *write = None;
                             }

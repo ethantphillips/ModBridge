@@ -45,7 +45,7 @@
 				<div class="flex flex-wrap items-center gap-4">
 					<Button type="colored" color="brand" size="lg" @click="onClickNewServer?.()">
 						<PlusIcon aria-hidden="true" />
-						{{ formatMessage(messages.newServerButton) }}
+						{{ newServerLabel ?? formatMessage(messages.newServerButton) }}
 					</Button>
 					<AutoLink
 						to="https://modrinth.com/hosting"
@@ -95,6 +95,7 @@ defineProps<{
 	onClickNewServer?: () => void
 	onClickSignIn?: () => void
 	loggedIn?: boolean
+	newServerLabel?: string
 }>()
 
 const { formatMessage } = useVIntl()

@@ -13,6 +13,7 @@ import {
 	watch,
 } from 'vue'
 
+import { injectModrinthClient } from '#ui/providers/api-client'
 import {
 	applyCapeTexture,
 	applyTexture,
@@ -141,6 +142,7 @@ export function useSkinPreviewScene({
 	initializeAnimations: (loadedScene: THREE.Object3D, clips: THREE.AnimationClip[]) => void
 	cleanupAnimationState: (root: THREE.Object3D | null) => void
 }) {
+	const client = injectModrinthClient(null)
 	const scene = shallowRef<THREE.Object3D | null>(null)
 	const lastCapeSrc = ref<string | undefined>(undefined)
 	const loadedModelSrc = ref<string | undefined>(undefined)
@@ -242,6 +244,7 @@ export function useSkinPreviewScene({
 		if (!src) return null
 
 		try {
+			src = client?.resolveMediaUrl(src) ?? src
 			try {
 				return await loadSkinTexture(src)
 			} catch {

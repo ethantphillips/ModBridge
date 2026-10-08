@@ -1,6 +1,8 @@
 import { arrayBufferToBase64 } from '@modrinth/utils/utils'
 import { invoke } from '@tauri-apps/api/core'
 
+import { resolveRelayMediaUrl } from '@/config'
+
 export interface Cape {
 	id: string
 	name: string
@@ -58,7 +60,7 @@ export async function determineModelType(texture: string): Promise<'SLIM' | 'CLA
 
 		const image = new Image()
 		image.crossOrigin = 'anonymous'
-		image.src = texture
+		image.src = resolveRelayMediaUrl(texture)
 
 		image.onload = () => {
 			canvas.width = image.width
@@ -111,11 +113,13 @@ export function filterDefaultSkins(list: Skin[]) {
 }
 
 export async function get_available_capes(): Promise<Cape[]> {
-	return invoke('plugin:minecraft-skins|get_available_capes', {})
+	const capes = await invoke<Cape[]>('plugin:minecraft-skins|get_available_capes', {})
+	return capes.map((cape) => ({ ...cape, texture: resolveRelayMediaUrl(cape.texture) }))
 }
 
 export async function get_available_skins(): Promise<Skin[]> {
-	return invoke('plugin:minecraft-skins|get_available_skins', {})
+	const skins = await invoke<Skin[]>('plugin:minecraft-skins|get_available_skins', {})
+	return skins.map((skin) => ({ ...skin, texture: resolveRelayMediaUrl(skin.texture) }))
 }
 
 export async function add_and_equip_custom_skin(

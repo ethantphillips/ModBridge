@@ -1,7 +1,6 @@
 use crate::api::Result;
-use chrono::{Duration, Utc};
 use tauri::plugin::TauriPlugin;
-use tauri::{Manager, Runtime, UserAttentionType};
+use tauri::Runtime;
 use theseus::prelude::*;
 
 pub fn init<R: Runtime>() -> TauriPlugin<R> {
@@ -25,66 +24,16 @@ pub async fn check_reachable() -> Result<()> {
     Ok(())
 }
 
-/// Authenticate a user with Hydra - part 1
-/// This begins the authentication flow quasi-synchronously, returning a URL to visit (that the user will sign in at)
+/// Online Minecraft authentication is unavailable in Relay-only mode.
 #[tauri::command]
 pub async fn login<R: Runtime>(
-    app: tauri::AppHandle<R>,
+	_app: tauri::AppHandle<R>,
 ) -> Result<Option<Credentials>> {
-    let flow = minecraft_auth::begin_login().await?;
-
-    let start = Utc::now();
-
-    if let Some(window) = app.get_webview_window("signin") {
-        window.close()?;
-    }
-
-    let window = tauri::WebviewWindowBuilder::new(
-        &app,
-        "signin",
-        tauri::WebviewUrl::External(flow.auth_request_uri.parse().map_err(
-            |_| {
-                theseus::ErrorKind::OtherError(
-                    "Error parsing auth redirect URL".to_string(),
-                )
-                .as_error()
-            },
-        )?),
-    )
-    .title("Sign into ModBridge")
-    .always_on_top(true)
-    .min_inner_size(500.0, 500.0)
-    .inner_size(1000.0, 700.0)
-    .focused(true)
-    .center()
-    .build()?;
-
-    window.request_user_attention(Some(UserAttentionType::Critical))?;
-
-    while (Utc::now() - start) < Duration::minutes(10) {
-        if window.title().is_err() {
-            // user closed window, cancelling flow
-            return Ok(None);
-        }
-
-        if window
-            .url()?
-            .as_str()
-            .starts_with("https://login.live.com/oauth20_desktop.srf")
-            && let Some((_, code)) =
-                window.url()?.query_pairs().find(|x| x.0 == "code")
-        {
-            window.close()?;
-            let val = minecraft_auth::finish_login(&code.clone(), flow).await?;
-
-            return Ok(Some(val));
-        }
-
-        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
-    }
-
-    window.close()?;
-    Ok(None)
+	Err(theseus::ErrorKind::OtherError(
+		"Online Minecraft sign-in is unavailable through Relay. Add an offline identity using a username and Identity PIN.".to_string(),
+	)
+	.as_error()
+	.into())
 }
 
 #[tauri::command]

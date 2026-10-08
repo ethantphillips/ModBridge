@@ -1,6 +1,6 @@
 <template>
 	<img
-		v-if="src && !failed"
+		v-if="resolvedSrc && !failed"
 		ref="img"
 		class="avatar shrink-0"
 		:style="`--_size: ${cssSize}`"
@@ -12,7 +12,7 @@
 			raised: raised,
 			pixelated: pixelated,
 		}"
-		:src="src"
+		:src="resolvedSrc"
 		:alt="alt"
 		:loading="loading"
 		@load="onLoad"
@@ -52,7 +52,9 @@
 import { computed, onBeforeUnmount, onMounted, ref, useTemplateRef, watch } from 'vue'
 
 import { useDebugLogger, useFullImageContextMenu } from '../../composables'
+import { injectModrinthClient } from '../../providers/api-client'
 
+const client = injectModrinthClient(null)
 const onFullImageContextMenu = useFullImageContextMenu()
 const debug = useDebugLogger('Avatar')
 
@@ -107,17 +109,22 @@ const LEGACY_PRESETS: Record<string, string> = {
 }
 
 const cssSize = computed(() => LEGACY_PRESETS[props.size] ?? props.size)
+const resolvedSrc = computed(() => {
+	if (!props.src) return null
+	try {
+		return client?.resolveMediaUrl(props.src) ?? props.src
+	} catch {
+		return null
+	}
+})
 
-watch(
-	() => props.src,
-	() => {
-		clearDetectionTimeout()
-		detectingSource = undefined
-		failed.value = false
-		hasTransparentCorners.value = false
-		hasDetectedCorners.value = false
-	},
-)
+watch(resolvedSrc, () => {
+	clearDetectionTimeout()
+	detectingSource = undefined
+	failed.value = false
+	hasTransparentCorners.value = false
+	hasDetectedCorners.value = false
+})
 
 onMounted(() => {
 	const image = img.value

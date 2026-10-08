@@ -1,18 +1,19 @@
 import { sanitizeRequestHeaders, sanitizeResponseHeaders } from '../shared/headers.js'
 import { createErrorResponse } from '../shared/errors.js'
 import type { ProxyRequestOptions } from '../shared/types.js'
-import { ALLOWED_UPSTREAM_HOSTS } from './routing.js'
+import { ALLOWED_UPSTREAM_HOSTS, isAllowedNodeHost } from './routing.js'
 import { rewriteJsonContent } from './rewrite.js'
+import { fetchAllowlisted, UpstreamError } from '../shared/fetch.js'
+import { stripRelayQueryAuth } from './auth.js'
 
 export async function executeProxy(options: ProxyRequestOptions): Promise<Response> {
-	const { target, subpath, searchParams, method, headers, body, relayOrigin } = options
+	const { target, subpath, searchParams, method, headers, body, signal, relayOrigin } = options
 
 	// Strip the relay auth token from query params before forwarding upstream
-	const forwardedParams = new URLSearchParams(searchParams)
-	forwardedParams.delete('token')
+	const forwardedParams = stripRelayQueryAuth(searchParams)
 
 	const queryString = forwardedParams.toString()
-	const upstreamUrl = `https://${target.upstreamHost}${subpath}${queryString ? `?${queryString}` : ''}`
+	const upstreamUrl = `https://${target.upstreamHost}${target.upstreamPrefix}${subpath}${queryString ? `?${queryString}` : ''}`
 
 	const upstreamHeaders = sanitizeRequestHeaders(headers, target.upstreamHost)
 
@@ -20,6 +21,7 @@ export async function executeProxy(options: ProxyRequestOptions): Promise<Respon
 	const fetchInit: RequestInit = {
 		method,
 		headers: upstreamHeaders,
+		signal,
 		redirect: 'manual',
 	}
 
@@ -33,44 +35,26 @@ export async function executeProxy(options: ProxyRequestOptions): Promise<Respon
 
 	let upstreamResponse: Response
 	try {
-		upstreamResponse = await fetch(upstreamUrl, fetchInit)
+		const allowedHosts = isAllowedNodeHost(target.upstreamHost)
+			? new Set([...ALLOWED_UPSTREAM_HOSTS, target.upstreamHost])
+			: ALLOWED_UPSTREAM_HOSTS
+		upstreamResponse = (await fetchAllowlisted(upstreamUrl, fetchInit, allowedHosts)).response
 	} catch (err: unknown) {
 		const message = err instanceof Error ? err.message : String(err)
-		return createErrorResponse(502, `Upstream request to ${target.upstreamHost} failed: ${message}`, 'BAD_GATEWAY')
-	}
-
-	// Handle upstream redirect safely
-	if ([301, 302, 303, 307, 308].includes(upstreamResponse.status)) {
-		const location = upstreamResponse.headers.get('location')
-		if (location) {
-			try {
-				const redirectUrl = new URL(location, upstreamUrl)
-				if (!ALLOWED_UPSTREAM_HOSTS.has(redirectUrl.hostname)) {
-					return createErrorResponse(
-						502,
-						`Upstream redirect to untrusted host '${redirectUrl.hostname}' was blocked.`,
-						'BLOCKED_REDIRECT',
-					)
-				}
-				// Follow the redirect internally within approved hosts
-				const redirectedHeaders = sanitizeRequestHeaders(headers, redirectUrl.hostname)
-				return await fetch(redirectUrl.toString(), {
-					method,
-					headers: redirectedHeaders,
-					redirect: 'follow',
-				})
-			} catch {
-				return createErrorResponse(502, 'Malformed upstream redirect location', 'BAD_REDIRECT')
-			}
-		}
+		return createErrorResponse(
+			502,
+			`Upstream request to ${target.upstreamHost} failed: ${message}`,
+			err instanceof UpstreamError ? err.code : 'BAD_GATEWAY',
+		)
 	}
 
 	const responseHeaders = sanitizeResponseHeaders(upstreamResponse.headers)
 	const contentType = upstreamResponse.headers.get('content-type') || ''
-	const isJson = contentType.includes('application/json')
+	const mediaType = contentType.split(';', 1)[0].trim().toLowerCase()
+	const isJson = mediaType === 'application/json' || /^application\/[\w.-]+\+json$/.test(mediaType)
 
 	// For HEAD requests, return immediately with headers and no body
-	if (method === 'HEAD') {
+	if (method === 'HEAD' || [204, 205, 304].includes(upstreamResponse.status)) {
 		return new Response(null, {
 			status: upstreamResponse.status,
 			statusText: upstreamResponse.statusText,
@@ -79,13 +63,23 @@ export async function executeProxy(options: ProxyRequestOptions): Promise<Respon
 	}
 
 	// If rewriting is enabled and the response is JSON, perform safe URL rewriting
-	if (target.enableRewrite && isJson && upstreamResponse.status >= 200 && upstreamResponse.status < 300) {
+	if (
+		target.enableRewrite &&
+		isJson &&
+		upstreamResponse.status >= 200 &&
+		upstreamResponse.status < 300 &&
+		upstreamResponse.status !== 206
+	) {
 		try {
 			const jsonText = await upstreamResponse.text()
 			const rewrittenJson = rewriteJsonContent(jsonText, relayOrigin)
+			if (rewrittenJson !== jsonText) responseHeaders.delete('etag')
 
 			responseHeaders.delete('content-encoding')
-			responseHeaders.set('content-length', String(new TextEncoder().encode(rewrittenJson).byteLength))
+			responseHeaders.set(
+				'content-length',
+				String(new TextEncoder().encode(rewrittenJson).byteLength),
+			)
 			return new Response(rewrittenJson, {
 				status: upstreamResponse.status,
 				statusText: upstreamResponse.statusText,

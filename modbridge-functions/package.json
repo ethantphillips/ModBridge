@@ -9,8 +9,16 @@
 		"typecheck": "tsc --noEmit"
 	},
 	"devDependencies": {
+		"@neon/config": "1.8.3",
 		"@types/node": "^22.0.0",
+		"@types/ws": "^8.18.2",
+		"esbuild": "^0.28.2",
+		"jsdom": "^26.1.0",
 		"typescript": "^5.5.4",
 		"vitest": "^2.1.0"
+	},
+	"dependencies": {
+		"@neon/functions": "^0.11.0",
+		"ws": "^8.22.0"
 	}
 }

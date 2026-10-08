@@ -1,6 +1,10 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 
+import { injectModrinthClient } from '../../providers/api-client'
+
+const client = injectModrinthClient(null)
+
 const emit = defineEmits<{
 	(e: 'select'): void
 }>()
@@ -22,6 +26,13 @@ const props = withDefaults(
 )
 
 const highlighted = computed(() => props.selected ?? props.isEquipped)
+const resolvedTexture = computed(() => {
+	try {
+		return client?.resolveMediaUrl(props.texture) ?? props.texture
+	} catch {
+		return undefined
+	}
+})
 </script>
 
 <template>
@@ -45,7 +56,7 @@ const highlighted = computed(() => props.selected ?? props.isEquipped)
 					'brightness-[0.3] contrast-[0.8]': faded,
 				}"
 			>
-				<img :src="texture" alt="" />
+				<img :src="resolvedTexture" alt="" />
 			</span>
 			<span
 				v-if="$slots.default || $slots.icon"

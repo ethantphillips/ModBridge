@@ -31,6 +31,7 @@ import type { Archon, Labrinth } from '@modrinth/api-client'
 import {
 	injectModrinthClient,
 	injectNotificationManager,
+	injectPageContext,
 	ModrinthServersPurchaseModal,
 	useDebugLogger,
 } from '@modrinth/ui'
@@ -48,7 +49,9 @@ const checkoutReturnUrl = computed(() => {
 })
 
 const { addNotification } = injectNotificationManager()
-const { labrinth, archon } = injectModrinthClient()
+const client = injectModrinthClient()
+const { labrinth, archon } = client
+const pageContext = injectPageContext()
 const debug = useDebugLogger('ServersUpgradeModalWrapper')
 const purchaseModal = ref<InstanceType<typeof ModrinthServersPurchaseModal> | null>(null)
 
@@ -241,6 +244,14 @@ async function finalizeDowngrade() {
 }
 
 async function open(id?: string) {
+	if (client.allowExternalEmbeds === false) {
+		pageContext.openExternalUrl(
+			id
+				? `https://modrinth.com/hosting/manage/${encodeURIComponent(id)}/options`
+				: 'https://modrinth.com/hosting/manage',
+		)
+		return
+	}
 	debug('open called', { id })
 	if (id) {
 		const subscriptions = await labrinth.billing_internal.getSubscriptions()

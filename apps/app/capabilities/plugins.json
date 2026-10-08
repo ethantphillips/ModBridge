@@ -23,34 +23,10 @@
 			"identifier": "http:default",
 			"allow": [
 				{
-					"url": "https://modrinth.com/*"
+					"url": "https://br-divine-snow-ahjav8i1-relay.compute.c-3.us-east-1.aws.neon.tech/*"
 				},
 				{
-					"url": "https://*.modrinth.com/*"
-				},
-				{
-					"url": "https://*.nodes.modrinth.com/*"
-				},
-				{
-					"url": "https://api.mclo.gs/*"
-				},
-				{
-					"url": "https://fill.papermc.io/*"
-				},
-				{
-					"url": "https://api.purpurmc.org/*"
-				},
-				{
-					"url": "http://localhost:8000/*"
-				},
-				{
-					"url": "http://127.0.0.1:8000/*"
-				},
-				{
-					"url": "http://*.taila228c5.ts.net/*"
-				},
-				{
-					"url": "https://*.taila228c5.ts.net/*"
+					"url": "https://br-divine-snow-ahjav8i1-updates.compute.c-3.us-east-1.aws.neon.tech/*"
 				}
 			]
 		},

@@ -29,6 +29,18 @@ export type RequestHooks = {
  * Client configuration
  */
 export interface ClientConfig {
+	/** Resolve outgoing service and media URLs, for example through an application relay. */
+	resolveUrl?: (url: string) => string
+
+	/** Resolve browser-loaded media URLs, which cannot carry the client's request headers. */
+	resolveMediaUrl?: (url: string) => string
+
+	/** Resolve WebSocket URLs, whose browser connections cannot carry request headers. */
+	resolveWebSocketUrl?: (url: string) => string
+
+	/** Whether third-party embedded content may load directly in the application. */
+	allowExternalEmbeds?: boolean
+
 	/**
 	 * User agent string or provider for requests
 	 * Should identify your application (e.g., 'my-app/1.0.0')

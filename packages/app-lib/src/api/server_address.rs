@@ -1,8 +1,7 @@
 use crate::{Error, ErrorKind, Result};
+use serde::Deserialize;
 use std::fmt::Display;
 use std::mem;
-use std::net::{Ipv4Addr, Ipv6Addr};
-use tokio::sync::Semaphore;
 
 #[derive(Debug, Clone)]
 pub enum ServerAddress {
@@ -138,34 +137,41 @@ pub async fn resolve_server_address(
     host: &str,
     port: u16,
 ) -> Result<(String, u16)> {
-    static SIMULTANEOUS_DNS_QUERIES: Semaphore = Semaphore::const_new(24);
+	resolve_server_address_with_base(
+		host,
+		port,
+		crate::util::relay::get_relay_base_url(),
+		&crate::util::fetch::INSECURE_REQWEST_CLIENT,
+	)
+	.await
+}
 
-    if port != 25565
-        || host.parse::<Ipv4Addr>().is_ok()
-        || host.parse::<Ipv6Addr>().is_ok()
-    {
-        return Ok((host.to_owned(), port));
-    }
+#[derive(Deserialize)]
+struct RelayResolvedServer {
+	resolved_host: String,
+	resolved_port: u16,
+}
 
-    let _permit = SIMULTANEOUS_DNS_QUERIES.acquire().await?;
-    let resolver = hickory_resolver::TokioResolver::builder_tokio()?.build();
-    Ok(
-        match resolver.srv_lookup(format!("_minecraft._tcp.{host}")).await {
-            Err(e)
-                if e.proto()
-                    .as_ref()
-                    .is_some_and(|x| x.kind().is_no_records_found()) =>
-            {
-                None
-            }
-            Err(e) => return Err(e.into()),
-            Ok(lookup) => lookup
-                .into_iter()
-                .next()
-                .map(|r| (r.target().to_string(), r.port())),
-        }
-        .unwrap_or_else(|| (host.to_owned(), port)),
-    )
+async fn resolve_server_address_with_base(
+	host: &str,
+	port: u16,
+	relay_base: &str,
+	client: &reqwest::Client,
+) -> Result<(String, u16)> {
+	let response = crate::util::relay::relay_request_with_base(
+		client,
+		reqwest::Method::POST,
+		&format!("{}/server/resolve", relay_base.trim_end_matches('/')),
+		relay_base,
+		crate::util::relay::get_relay_token(),
+	)?
+	.json(&serde_json::json!({ "host": host, "port": port }))
+	.timeout(std::time::Duration::from_secs(10))
+	.send()
+	.await?
+	.error_for_status()?;
+	let resolved: RelayResolvedServer = response.json().await?;
+	Ok((resolved.resolved_host, resolved.resolved_port))
 }
 
 #[cfg(test)]
@@ -192,4 +198,55 @@ mod tests {
             assert_eq!(parse_server_address_inner(address), Ok(expected));
         }
     }
+
+	#[tokio::test]
+	async fn resolves_remote_server_only_through_relay() {
+		use tokio::io::{AsyncReadExt, AsyncWriteExt};
+		let listener =
+			tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+		let base = format!("http://{}", listener.local_addr().unwrap());
+		let server = tokio::spawn(async move {
+			let (mut stream, _) = listener.accept().await.unwrap();
+			let mut received = Vec::new();
+			loop {
+				let mut buffer = [0; 4096];
+				let size = stream.read(&mut buffer).await.unwrap();
+				assert!(size > 0);
+				received.extend_from_slice(&buffer[..size]);
+				if let Some(start) =
+					received.windows(4).position(|chunk| chunk == b"\r\n\r\n")
+				{
+					if let Ok(body) = serde_json::from_slice::<serde_json::Value>(
+						&received[start + 4..],
+					) {
+						assert!(
+							received.starts_with(
+								b"POST /server/resolve HTTP/1.1\r\n"
+							)
+						);
+						assert_eq!(
+							body,
+							serde_json::json!({"host": "minecraft.example", "port": 25565})
+						);
+						break;
+}
+				}
+			}
+			let body = serde_json::json!({"resolved_host": "203.0.113.10", "resolved_port": 25570}).to_string();
+			stream.write_all(format!("HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}", body.len()).as_bytes()).await.unwrap();
+		});
+		let client = reqwest::Client::builder().no_proxy().build().unwrap();
+		assert_eq!(
+			super::resolve_server_address_with_base(
+				"minecraft.example",
+				25565,
+				&base,
+				&client
+			)
+			.await
+			.unwrap(),
+			("203.0.113.10".to_string(), 25570)
+		);
+		server.await.unwrap();
+	}
 }

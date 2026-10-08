@@ -13,6 +13,8 @@ pub enum OfflineIdentityError {
 	EmptyUsername,
 	#[error("Username contains invalid characters (allowed: a-z, A-Z, 0-9, _)")]
 	InvalidUsername,
+	#[error("Username must contain at most 16 characters")]
+	UsernameTooLong,
 	#[error("Identity PIN cannot be empty")]
 	EmptyPin,
 }
@@ -21,7 +23,7 @@ pub enum OfflineIdentityError {
 /// Trims whitespace and lowercases to avoid splitting inventories/state
 /// due to inconsistent casing across servers or launchers.
 pub fn normalize_username(username: &str) -> String {
-	username.trim().to_lowercase()
+	username.trim().to_ascii_lowercase()
 }
 
 /// Derives a deterministic UUID from a Minecraft username and Identity PIN.
@@ -48,6 +50,9 @@ pub fn derive_offline_uuid(
 	{
 		return Err(OfflineIdentityError::InvalidUsername);
 	}
+	if trimmed_username.len() > 16 {
+		return Err(OfflineIdentityError::UsernameTooLong);
+	}
 
 	let trimmed_pin = pin.trim();
 	if trimmed_pin.is_empty() {
@@ -55,10 +60,11 @@ pub fn derive_offline_uuid(
 	}
 
 	let normalized_name = normalize_username(trimmed_username);
-	let input = format!("modbridge:offline-player:v1:{normalized_name}:{trimmed_pin}");
-
 	let mut hasher = Sha256::new();
-	hasher.update(input.as_bytes());
+	hasher.update(b"modbridge:offline-player:v1:");
+	hasher.update(normalized_name.as_bytes());
+	hasher.update(b":");
+	hasher.update(trimmed_pin.as_bytes());
 	let digest = hasher.finalize();
 
 	let mut uuid_bytes = [0u8; 16];
@@ -129,7 +135,25 @@ mod tests {
 	#[test]
 	fn test_validation() {
 		assert!(derive_offline_uuid("", "1234").is_err());
+		assert!(derive_offline_uuid(" \t\n", "1234").is_err());
 		assert!(derive_offline_uuid("Steve", "").is_err());
+		assert!(derive_offline_uuid("Steve", " \t\n").is_err());
 		assert!(derive_offline_uuid("Invalid Name!", "1234").is_err());
+		assert!(derive_offline_uuid("Stève", "1234").is_err());
+		assert!(derive_offline_uuid("abcdefghijklmnopq", "1234").is_err());
+		assert!(derive_offline_uuid("abcdefghijklmnop", "1234").is_ok());
+		assert!(derive_offline_uuid("a", "1234").is_ok());
+	}
+
+	#[test]
+	fn test_whitespace_and_pin_normalization() {
+		assert_eq!(
+			derive_offline_uuid(" \tSTEVE\n", " 1234 \t").unwrap(),
+			derive_offline_uuid("steve", "1234").unwrap()
+		);
+		assert_ne!(
+			derive_offline_uuid("Steve", "secret").unwrap(),
+			derive_offline_uuid("Steve", "Secret").unwrap()
+		);
 	}
 }

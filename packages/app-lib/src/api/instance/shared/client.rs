@@ -654,8 +654,11 @@ pub(super) async fn active_modrinth_session_is_valid(
     };
 
     let _permit = state.api_semaphore.0.acquire().await?;
-    let response = INSECURE_REQWEST_CLIENT
-        .get(concat!(env!("MODRINTH_API_URL"), "user"))
+	let response = crate::util::fetch::relay_request(
+		&INSECURE_REQWEST_CLIENT,
+		Method::GET,
+		concat!(env!("MODRINTH_API_URL"), "user"),
+	)?
         .header("Authorization", &credentials.session)
         .send()
         .await?;
@@ -860,26 +863,11 @@ pub(super) async fn send_body_request_to_url(
     file_sha512: Option<&str>,
     state: &State,
 ) -> crate::Result<reqwest::Response> {
-    let service_origin = url::Url::parse(service_base_url())
-        .map_err(|error| {
-            crate::ErrorKind::OtherError(format!(
-                "Invalid shared instances API base URL: {error}"
-            ))
-        })?
-        .origin();
-    let upload_origin = url::Url::parse(url)
-        .map_err(|error| {
-            crate::ErrorKind::OtherError(format!(
-                "Invalid shared instances upload URL: {error}"
-            ))
-        })?
-        .origin();
-    if service_origin != upload_origin {
-        return Err(crate::ErrorKind::OtherError(
-            "Shared instances upload URL has an unexpected origin".to_string(),
-        )
-        .into());
-    }
+	let upload_url = validated_upload_url(
+		service_base_url(),
+		url,
+		crate::util::relay::get_relay_base_url(),
+	)?;
 
     let credentials =
         ModrinthCredentials::get_and_refresh(&state.pool, &state.api_semaphore)
@@ -898,8 +886,11 @@ pub(super) async fn send_body_request_to_url(
         "Sending shared instances API request"
     );
 
-    let mut request = shared_instances_upload_client(url)
-        .request(method.clone(), url)
+	let mut request = crate::util::fetch::relay_request(
+		shared_instances_upload_client(&upload_url),
+		method.clone(),
+		&upload_url,
+	)?
         .bearer_auth(credentials.session)
         .header(reqwest::header::CONTENT_TYPE, "application/octet-stream")
         .body(body);
@@ -931,6 +922,40 @@ pub(super) async fn send_body_request_to_url(
     }
 
     Ok(response)
+}
+
+fn validated_upload_url(
+	service_base: &str,
+	upload_url: &str,
+	relay_base: &str,
+) -> crate::Result<String> {
+	let relay_service_url =
+		crate::util::relay::route_url_with_base(service_base, relay_base)?;
+	let relay_upload_url =
+		crate::util::relay::route_url_with_base(upload_url, relay_base)?;
+	let service_url = url::Url::parse(&relay_service_url).map_err(|error| {
+		crate::ErrorKind::OtherError(format!(
+			"Invalid shared instances API base URL: {error}"
+		))
+	})?;
+	let upload_url = url::Url::parse(&relay_upload_url).map_err(|error| {
+		crate::ErrorKind::OtherError(format!(
+			"Invalid shared instances upload URL: {error}"
+		))
+	})?;
+	let service_path = service_url.path().trim_end_matches('/');
+	if service_url.origin() != upload_url.origin()
+		|| !(upload_url.path() == service_path
+			|| upload_url.path().starts_with(&format!("{service_path}/")))
+	{
+		return Err(crate::ErrorKind::OtherError(
+			"Shared instances upload URL has an unexpected destination"
+				.to_string(),
+		)
+		.into());
+	}
+
+	Ok(relay_upload_url)
 }
 
 pub(super) async fn send_request_with_auth(
@@ -973,8 +998,11 @@ async fn send_request_with_auth_and_log_path(
     let base_url = service_base_url();
     let url = service_url(base_url, path);
     let log_url = service_url(base_url, log_path);
-    let mut request =
-        shared_instances_client(base_url).request(method.clone(), &url);
+	let mut request = crate::util::fetch::relay_request(
+		shared_instances_client(base_url),
+		method.clone(),
+		&url,
+	)?;
     let mut user_id = None;
 
     match auth {
@@ -1066,8 +1094,7 @@ pub(super) fn response_request_id(
         || request_id.len() > 128
         || !request_id.chars().all(|character| {
             character.is_ascii_alphanumeric() || "-_.:".contains(character)
-        })
-    {
+		}) {
         return None;
     }
 
@@ -1100,4 +1127,49 @@ pub(super) fn shared_instances_upload_client(
     } else {
         &INSECURE_NO_TIMEOUT_REQWEST_CLIENT
     }
+}
+
+#[cfg(test)]
+mod relay_upload_tests {
+	use super::validated_upload_url;
+
+	const RELAY: &str = "https://relay.modbridge.internal";
+
+	#[test]
+	fn accepts_cached_upstream_and_relay_uploads_for_same_service() {
+		let expected =
+			format!("{RELAY}/shared-instances/v1/files/123?token=upload");
+		for service in [
+			"https://shared-instances.modrinth.com/",
+			&format!("{RELAY}/shared-instances/"),
+		] {
+			for upload in [
+				"https://shared-instances.modrinth.com/v1/files/123?token=upload",
+				expected.as_str(),
+			] {
+				assert_eq!(
+					validated_upload_url(service, upload, RELAY).unwrap(),
+					expected
+				);
+			}
+		}
+	}
+
+	#[test]
+	fn rejects_cross_service_uploads_even_on_same_relay_origin() {
+		let service = "https://shared-instances.modrinth.com/";
+		for upload in [
+			"https://cdn.modrinth.com/file.jar",
+			"https://staging-shared-instances.modrinth.com/v1/files/123",
+			"https://evil.example/v1/files/123",
+			"https://relay.modbridge.internal/archon/v1/files/123",
+			"https://relay.modbridge.internal/shared-instances-evil/v1/files/123",
+			"https://relay.modbridge.internal/shared-instances/../archon/files/123",
+		] {
+			assert!(
+				validated_upload_url(service, upload, RELAY).is_err(),
+				"{upload}"
+			);
+		}
+	}
 }

@@ -13,8 +13,10 @@ import {
 	injectModrinthClient,
 	injectModrinthServerContext,
 	injectNotificationManager,
+	injectPageContext,
 } from '#ui/providers'
 import { commonMessages } from '#ui/utils/common-messages'
+import { saveBlobForClient } from '#ui/utils/file-download'
 
 import FilePageLayout from '../../../shared/files-tab/layout.vue'
 import { provideFileManager } from '../../../shared/files-tab/providers/file-manager'
@@ -26,6 +28,7 @@ const props = defineProps<{
 }>()
 
 const client = injectModrinthClient()
+const pageContext = injectPageContext(null)
 const serverContext = injectModrinthServerContext()
 const {
 	serverId,
@@ -378,7 +381,7 @@ async function downloadFile(path: string, fileName: string): Promise<void> {
 	try {
 		const fileData = await client.kyros.files_v0.downloadFile(path)
 		if (fileData) {
-			saveBlob(fileData, fileName)
+			await saveBlobForClient(pageContext, fileData, fileName)
 		}
 	} catch {
 		addNotification({
@@ -387,14 +390,6 @@ async function downloadFile(path: string, fileName: string): Promise<void> {
 			type: 'error',
 		})
 	}
-}
-
-function saveBlob(blob: Blob, fileName: string) {
-	const link = document.createElement('a')
-	link.href = window.URL.createObjectURL(blob)
-	link.download = fileName
-	link.click()
-	window.URL.revokeObjectURL(link.href)
 }
 
 async function statFile(path: string): Promise<Kyros.Files.v1.FileStatResponse> {

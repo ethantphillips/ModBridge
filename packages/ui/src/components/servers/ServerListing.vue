@@ -437,7 +437,8 @@ type ServerListingProps = {
 const props = defineProps<ServerListingProps>()
 const router = useRouter()
 
-const { archon, kyros, labrinth } = injectModrinthClient()
+const client = injectModrinthClient()
+const { archon, kyros, labrinth } = client
 
 const isConfiguring = computed(() => props.flows?.intro)
 const isUpgrading = computed(
@@ -581,7 +582,7 @@ const { data: image } = useQuery({
 
 				const projectIcon = iconUrl.value
 				if (projectIcon) {
-					const response = await fetch(projectIcon)
+					const response = await fetch(client.resolveMediaUrl(projectIcon))
 					const blob = await response.blob()
 
 					const scaledDataUrl = await processImageBlob(blob, 64)

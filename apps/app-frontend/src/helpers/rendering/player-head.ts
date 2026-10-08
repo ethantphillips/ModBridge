@@ -1,3 +1,5 @@
+import { resolveRelayMediaUrl } from '@/config'
+
 import type { Skin } from '../skins'
 import { get_normalized_skin_texture } from '../skins'
 import { headStorage } from '../storage/head-storage'
@@ -95,7 +97,7 @@ export async function generatePlayerHeadBlob(skinUrl: string, size: number = 64)
 			reject(new Error('Failed to load skin texture image'))
 		}
 
-		img.src = skinUrl
+		img.src = resolveRelayMediaUrl(skinUrl)
 	})
 }
 

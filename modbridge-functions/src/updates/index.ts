@@ -1,161 +1,124 @@
-import { fetchLatestRelease, fetchReleaseByTag, ALLOWED_GITHUB_DOWNLOAD_HOSTS } from './github.js'
-import { buildUpdateManifest } from './manifest.js'
+import { fetchLatestRelease, fetchReleaseByTag, fetchReleaseAsset } from './github.js'
+import { loadUpdateManifest } from './manifest.js'
 import { createErrorResponse } from '../shared/errors.js'
-import { sanitizeRequestHeaders, sanitizeResponseHeaders } from '../shared/headers.js'
+import { CORS_ALLOW_HEADERS, sanitizeResponseHeaders } from '../shared/headers.js'
 import { logProxyRequest } from '../shared/logging.js'
+import { UpstreamError } from '../shared/fetch.js'
 
-export default {
-	async fetch(request: Request): Promise<Response> {
-		const startTime = Date.now()
-		const url = new URL(request.url)
-		const pathname = url.pathname
+export async function handleUpdates(
+	request: Request,
+	origin?: string,
+	routePath?: string,
+): Promise<Response> {
+	const startTime = Date.now()
+	const url = new URL(request.url)
+	const pathname = routePath ?? url.pathname
+	const updateOrigin = origin ?? url.origin
+	if (request.method === 'OPTIONS') {
+		return new Response(null, {
+			status: 204,
+			headers: {
+				'Access-Control-Allow-Origin': '*',
+				'Access-Control-Allow-Methods': 'GET, HEAD, OPTIONS',
+				'Access-Control-Allow-Headers': CORS_ALLOW_HEADERS,
+			},
+		})
+	}
+	if (request.method !== 'GET' && request.method !== 'HEAD') {
+		return createErrorResponse(
+			405,
+			'Updates only support GET and HEAD requests',
+			'METHOD_NOT_ALLOWED',
+		)
+	}
+	if (pathname === '/' || pathname === '/health') {
+		return jsonResponse(
+			{ service: 'ModBridge Updates', status: 'ok', repository: 'ethantphillips/ModBridge' },
+			request.method,
+		)
+	}
 
-		// CORS preflight
-		if (request.method === 'OPTIONS') {
-			return new Response(null, {
-				status: 204,
-				headers: {
-					'Access-Control-Allow-Origin': '*',
-					'Access-Control-Allow-Methods': 'GET, HEAD, OPTIONS',
-					'Access-Control-Allow-Headers': 'Content-Type, Range, If-Range, If-None-Match, If-Modified-Since',
-				},
-			})
-		}
-
-		if (pathname === '/' || pathname === '/health') {
-			return new Response(
-				JSON.stringify({
-					service: 'ModBridge Updates',
-					status: 'ok',
-					repository: 'ethantphillips/ModBridge',
-				}),
-				{
-					status: 200,
-					headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
-				},
+	const manifestMatch = pathname.match(/^\/manifest\/([^/]+)$/)
+	if (pathname === '/latest' || pathname === '/updates.json' || manifestMatch) {
+		try {
+			const channel = url.searchParams.get('channel') || 'stable'
+			if (!['stable', 'beta', 'prerelease'].includes(channel)) {
+				return createErrorResponse(400, `Unknown update channel '${channel}'`, 'INVALID_CHANNEL')
+			}
+			const release = manifestMatch
+				? await fetchReleaseByTag(decodeURIComponent(manifestMatch[1]))
+				: await fetchLatestRelease(channel === 'beta' || channel === 'prerelease')
+			if (!release)
+				return createErrorResponse(404, 'No matching ModBridge release found', 'NO_RELEASES')
+			const manifest = await loadUpdateManifest(release, updateOrigin)
+			return jsonResponse(manifest, request.method, manifestMatch ? 3600 : 300)
+		} catch (error) {
+			return createErrorResponse(
+				502,
+				error instanceof Error ? error.message : String(error),
+				'GITHUB_ERROR',
 			)
 		}
+	}
 
-		const updateOrigin = `${url.protocol}//${url.host}`
-
-		// Latest release manifest
-		if (pathname === '/latest' || pathname === '/updates.json') {
-			const channel = url.searchParams.get('channel') || 'stable'
-			const includePrerelease = channel === 'beta' || channel === 'prerelease'
-
-			try {
-				const release = await fetchLatestRelease(includePrerelease)
-				if (!release) {
-					return createErrorResponse(404, 'No releases found for ModBridge', 'NO_RELEASES')
-				}
-
-				const manifest = buildUpdateManifest(release, updateOrigin)
-				return new Response(JSON.stringify(manifest), {
-					status: 200,
-					headers: {
-						'Content-Type': 'application/json',
-						'Access-Control-Allow-Origin': '*',
-						'Cache-Control': 'public, max-age=300',
-					},
-				})
-			} catch (err: unknown) {
-				const message = err instanceof Error ? err.message : String(err)
-				return createErrorResponse(502, `Failed fetching release metadata from GitHub: ${message}`, 'GITHUB_ERROR')
-			}
-		}
-
-		// Manifest for a specific version: /manifest/:version
-		const manifestMatch = pathname.match(/^\/manifest\/([^/]+)$/)
-		if (manifestMatch) {
-			const tag = manifestMatch[1]
-			try {
-				const release = await fetchReleaseByTag(tag)
-				if (!release) {
-					return createErrorResponse(404, `Release '${tag}' not found`, 'RELEASE_NOT_FOUND')
-				}
-
-				const manifest = buildUpdateManifest(release, updateOrigin)
-				return new Response(JSON.stringify(manifest), {
-					status: 200,
-					headers: {
-						'Content-Type': 'application/json',
-						'Access-Control-Allow-Origin': '*',
-						'Cache-Control': 'public, max-age=3600',
-					},
-				})
-			} catch (err: unknown) {
-				const message = err instanceof Error ? err.message : String(err)
-				return createErrorResponse(502, `Failed fetching release metadata: ${message}`, 'GITHUB_ERROR')
-			}
-		}
-
-		// Download release asset: /download/:version/:platform/:asset
-		const downloadMatch = pathname.match(/^\/download\/([^/]+)\/([^/]+)\/([^/]+)$/)
-		if (downloadMatch) {
-			const tag = downloadMatch[1]
+	const downloadMatch = pathname.match(/^\/download\/([^/]+)\/([^/]+)\/([^/]+)$/)
+	if (downloadMatch) {
+		try {
+			const tag = decodeURIComponent(downloadMatch[1])
 			const assetName = decodeURIComponent(downloadMatch[3])
-
-			try {
-				const release = await fetchReleaseByTag(tag)
-				if (!release) {
-					return createErrorResponse(404, `Release '${tag}' not found`, 'RELEASE_NOT_FOUND')
-				}
-
-				const asset = release.assets.find((a) => a.name === assetName)
-				if (!asset) {
-					return createErrorResponse(404, `Asset '${assetName}' not found in release '${tag}'`, 'ASSET_NOT_FOUND')
-				}
-
-				const downloadUrl = new URL(asset.browser_download_url)
-				if (!ALLOWED_GITHUB_DOWNLOAD_HOSTS.has(downloadUrl.hostname)) {
-					return createErrorResponse(502, `Untrusted GitHub asset host '${downloadUrl.hostname}'`, 'UNTRUSTED_HOST')
-				}
-
-				const upstreamHeaders = sanitizeRequestHeaders(request.headers, downloadUrl.hostname)
-				const fetchInit: RequestInit = {
-					method: request.method,
-					headers: upstreamHeaders,
-					redirect: 'follow',
-				}
-
-				const upstreamResponse = await fetch(downloadUrl.toString(), fetchInit)
-
-				// Check redirect target if redirected
-				const finalUrl = new URL(upstreamResponse.url)
-				if (!ALLOWED_GITHUB_DOWNLOAD_HOSTS.has(finalUrl.hostname)) {
-					return createErrorResponse(502, `GitHub redirect to untrusted host '${finalUrl.hostname}' blocked`, 'UNTRUSTED_REDIRECT')
-				}
-
-				const responseHeaders = sanitizeResponseHeaders(upstreamResponse.headers)
-				responseHeaders.set('Content-Disposition', `attachment; filename="${asset.name}"`)
-
-				logProxyRequest({
-					timestamp: new Date().toISOString(),
-					functionName: 'updates',
-					method: request.method,
-					route: pathname,
-					upstreamHost: finalUrl.hostname,
-					status: upstreamResponse.status,
-					durationMs: Date.now() - startTime,
-				})
-
-				if (request.method === 'HEAD') {
-					return new Response(null, {
-						status: upstreamResponse.status,
-						headers: responseHeaders,
-					})
-				}
-
-				return new Response(upstreamResponse.body, {
-					status: upstreamResponse.status,
-					headers: responseHeaders,
-				})
-			} catch (err: unknown) {
-				const message = err instanceof Error ? err.message : String(err)
-				return createErrorResponse(502, `Failed streaming update asset: ${message}`, 'DOWNLOAD_ERROR')
-			}
+			const release = await fetchReleaseByTag(tag)
+			if (!release)
+				return createErrorResponse(404, `Release '${tag}' not found`, 'RELEASE_NOT_FOUND')
+			const asset = release.assets.find((asset) => asset.name === assetName)
+			if (!asset)
+				return createErrorResponse(404, `Asset '${assetName}' not found`, 'ASSET_NOT_FOUND')
+			const { response, url: finalUrl } = await fetchReleaseAsset(asset, {
+				method: request.method,
+				headers: request.headers,
+				signal: request.signal,
+			})
+			const headers = sanitizeResponseHeaders(response.headers)
+			headers.set(
+				'Content-Disposition',
+				`attachment; filename="${asset.name.replace(/["\\\r\n]/g, '_')}"`,
+			)
+			logProxyRequest({
+				timestamp: new Date().toISOString(),
+				functionName: 'updates',
+				method: request.method,
+				route: pathname,
+				upstreamHost: finalUrl.hostname,
+				status: response.status,
+				durationMs: Date.now() - startTime,
+			})
+			return new Response(
+				request.method === 'HEAD' || [204, 205, 304].includes(response.status)
+					? null
+					: response.body,
+				{
+					status: response.status,
+					headers,
+				},
+			)
+		} catch (error) {
+			return createErrorResponse(
+				502,
+				error instanceof Error ? error.message : String(error),
+				error instanceof UpstreamError ? error.code : 'DOWNLOAD_ERROR',
+			)
 		}
-
-		return createErrorResponse(404, `Route '${pathname}' not found on ModBridge Update Function`, 'NOT_FOUND')
-	},
+	}
+	return createErrorResponse(404, `Update route '${pathname}' not found`, 'NOT_FOUND')
 }
+
+function jsonResponse(value: unknown, method: string, maxAge?: number): Response {
+	return new Response(method === 'HEAD' ? null : JSON.stringify(value), {
+		headers: {
+			'Content-Type': 'application/json',
+			'Access-Control-Allow-Origin': '*',
+			...(maxAge ? { 'Cache-Control': `public, max-age=${maxAge}` } : {}),
+		},
+	})
+}
+
+export default { fetch: (request: Request) => handleUpdates(request) }

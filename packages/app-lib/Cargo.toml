@@ -131,6 +131,7 @@ zip = { workspace = true }
 [build-dependencies]
 dotenvy = { workspace = true }
 dunce = { workspace = true }
+url = { workspace = true }
 
 [target.'cfg(target_os = "macos")'.dependencies]
 cidre = { workspace = true, features = ["blocks", "nw"] }

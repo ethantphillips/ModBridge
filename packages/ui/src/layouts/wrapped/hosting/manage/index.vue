@@ -115,7 +115,7 @@
 					/>
 					<Button type="colored" color="brand" @click="openPurchaseModal">
 						<PlusIcon />
-						{{ formatMessage(messages.newServerButton) }}
+						{{ newServerLabel }}
 					</Button>
 				</div>
 			</div>
@@ -142,6 +142,7 @@
 				>
 					<ServerListEmpty
 						:logged-in="loggedIn"
+						:new-server-label="newServerLabel"
 						@click-new-server="openPurchaseModal"
 						@click-sign-in="handleSignIn"
 					/>
@@ -243,6 +244,7 @@ import {
 	injectAuth,
 	injectModrinthClient,
 	injectNotificationManager,
+	injectPageContext,
 	Input,
 	IntlFormatted,
 	isWithinServerResubscribeWindow,
@@ -278,6 +280,7 @@ const router = useRouter()
 const route = useRoute()
 const auth = injectAuth()
 const client = injectModrinthClient()
+const pageContext = injectPageContext()
 const loggedIn = computed(() => !!auth.user.value)
 const { formatMessage } = useVIntl()
 
@@ -314,6 +317,10 @@ const messages = defineMessages({
 		defaultMessage: 'Search {count} {count, plural, one {server} other {servers}}...',
 	},
 	newServerButton: { id: 'servers.manage.new-server-button', defaultMessage: 'New server' },
+	newServerBrowserButton: {
+		id: 'servers.manage.new-server-browser-button',
+		defaultMessage: 'New server in browser',
+	},
 	yourServersTitle: {
 		id: 'servers.manage.your-servers-title',
 		defaultMessage: 'Your servers',
@@ -378,6 +385,14 @@ const messages = defineMessages({
 		defaultMessage: 'An error occurred while resubscribing to your Modrinth server.',
 	},
 })
+
+const newServerLabel = computed(() =>
+	formatMessage(
+		client.allowExternalEmbeds === false
+			? messages.newServerBrowserButton
+			: messages.newServerButton,
+	),
+)
 
 const isPollingForNewServers = ref(false)
 const showPollingForNewServers = ref(false)
@@ -715,6 +730,10 @@ const hostingPurchaseIntent = createHostingPurchaseIntentContext({
 			type: 'info',
 		})
 	},
+	openExternalCheckout:
+		client.allowExternalEmbeds === false
+			? () => pageContext.openExternalUrl('https://modrinth.com/hosting/manage')
+			: undefined,
 })
 provideHostingPurchaseIntent(hostingPurchaseIntent)
 

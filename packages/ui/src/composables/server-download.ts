@@ -1,7 +1,9 @@
 import type { Archon } from '@modrinth/api-client'
 
 import { injectModrinthClient } from '../providers/api-client'
+import { injectPageContext } from '../providers/page-context'
 import { injectNotificationManager } from '../providers/web-notifications'
+import { downloadForClient } from '../utils/file-download'
 import { defineMessages, useVIntl } from './i18n'
 
 const messages = defineMessages({
@@ -33,6 +35,7 @@ export function hasAvailableWorldDownload(
 
 export function useServerWorldDownload() {
 	const client = injectModrinthClient()
+	const pageContext = injectPageContext(null)
 	const { addNotification } = injectNotificationManager()
 	const { formatMessage } = useVIntl()
 
@@ -56,7 +59,7 @@ export function useServerWorldDownload() {
 		try {
 			const { token } = await client.kyros.files_v1.authorizeFullWorldDownload(nodeUrlHost, worldId)
 			const downloadUrl = client.kyros.files_v1.getFullWorldDownloadUrl(nodeUrlHost, worldId, token)
-			window.location.assign(downloadUrl)
+			await downloadForClient(client, pageContext, downloadUrl, `world-${worldId}.zip`)
 		} catch {
 			showDownloadFailedNotification()
 		}

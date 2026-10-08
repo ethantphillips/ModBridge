@@ -101,6 +101,9 @@ pub enum ErrorKind {
     #[error("Error fetching URL: {0}")]
     FetchError(#[from] reqwest::Error),
 
+	#[error("Relay routing failed: {0}")]
+	RelayRouting(#[from] util::relay::RelayRoutingError),
+
     #[error("Too many API errors, try again in {0} minutes")]
     ApiIsDownError(u32),
 

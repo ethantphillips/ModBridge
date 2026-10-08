@@ -22,6 +22,7 @@ import {
 	fileTypeMessages,
 	projectCompatibilityMessages,
 } from '#ui/utils/common-messages.ts'
+import { renderForClient } from '#ui/utils/render-for-client'
 
 import AutoLink from '../base/AutoLink.vue'
 import Avatar from '../base/Avatar.vue'
@@ -55,6 +56,13 @@ const props = defineProps<{
 
 const api = injectModrinthClient()
 const tags = injectTags(null)
+const changelogHtml = computed(() =>
+	renderForClient(
+		renderHighlightedString(props.version.changelog ?? ''),
+		api,
+		formatMessage(commonMessages.openInBrowserButton),
+	),
+)
 
 const gameVersionsToDisplay = computed(() =>
 	tags?.gameVersions.value?.length
@@ -457,11 +465,7 @@ const authorLink = computed(() =>
 		<section id="changes">
 			<h3 class="mt-0 mb-2 text-lg font-semibold">{{ formatMessage(messages.changes) }}</h3>
 			<div class="p-4 bg-surface-3 rounded-2xl border-solid border border-surface-4">
-				<div
-					v-if="version.changelog"
-					class="markdown-body"
-					v-html="renderHighlightedString(version.changelog)"
-				/>
+				<div v-if="version.changelog" class="markdown-body" v-html="changelogHtml" />
 				<div v-else class="text-secondary">{{ formatMessage(messages.noChanges) }}</div>
 			</div>
 		</section>

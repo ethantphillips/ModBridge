@@ -23,10 +23,23 @@ export function validateRelayAuth(request: Request): { authorized: boolean; reas
 
 	// Check query string token for streaming downloads where headers may not be attachable
 	const url = new URL(request.url)
-	const queryToken = url.searchParams.get('token')
-	if (queryToken && queryToken === secret) {
+	const queryTokens = [
+		...url.searchParams.getAll('relay_token'),
+		...url.searchParams.getAll('token'),
+	]
+	if (queryTokens.includes(secret)) {
 		return { authorized: true }
 	}
 
 	return { authorized: false, reason: 'Missing or invalid relay authorization token' }
+}
+
+export function stripRelayQueryAuth(params: URLSearchParams): URLSearchParams {
+	const forwarded = new URLSearchParams()
+	const secret = process.env.MODBRIDGE_RELAY_SECRET || process.env.MODBRIDGE_RELAY_TOKEN
+	for (const [key, value] of params) {
+		if (key === 'relay_token' || (key === 'token' && secret && value === secret)) continue
+		forwarded.append(key, value)
+	}
+	return forwarded
 }

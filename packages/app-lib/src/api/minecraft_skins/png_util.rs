@@ -25,13 +25,16 @@ pub async fn url_to_data_stream(
 
         Ok(Either::Left(stream::once(async { Ok(data) })))
     } else {
-        let response = INSECURE_REQWEST_CLIENT
-            .get(url.as_str())
-            .header("Accept", "image/png")
-            .timeout(std::time::Duration::from_secs(10))
-            .send()
-            .await
-            .and_then(|response| response.error_for_status())?;
+        let response = crate::util::fetch::relay_request(
+            &INSECURE_REQWEST_CLIENT,
+            reqwest::Method::GET,
+            url.as_str(),
+        )?
+        .header("Accept", "image/png")
+        .timeout(std::time::Duration::from_secs(10))
+        .send()
+        .await
+        .and_then(|response| response.error_for_status())?;
 
         Ok(Either::Right(response.bytes_stream()))
     }

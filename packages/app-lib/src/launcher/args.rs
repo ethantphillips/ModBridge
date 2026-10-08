@@ -268,6 +268,11 @@ pub async fn get_minecraft_arguments(
     quick_play_version: QuickPlayVersion,
 ) -> crate::Result<Vec<String>> {
     let access_token = credentials.access_token.clone();
+    let user_type = if credentials.is_offline() {
+        "legacy"
+    } else {
+        "msa"
+    };
     let profile = credentials.maybe_online_profile().await;
     let mut parsed_arguments = Vec::new();
 
@@ -279,6 +284,7 @@ pub async fn get_minecraft_arguments(
                 parse_minecraft_argument(
                     arg,
                     &access_token,
+                    user_type,
                     &profile.name,
                     profile.id,
                     version,
@@ -298,6 +304,7 @@ pub async fn get_minecraft_arguments(
             parsed_arguments.push(parse_minecraft_argument(
                 &x.replace(' ', TEMPORARY_REPLACE_CHAR),
                 &access_token,
+                user_type,
                 &profile.name,
                 profile.id,
                 version,
@@ -330,6 +337,7 @@ pub async fn get_minecraft_arguments(
 fn parse_minecraft_argument(
     argument: &str,
     access_token: &str,
+    user_type: &str,
     username: &str,
     uuid: Uuid,
     version: &str,
@@ -351,7 +359,7 @@ fn parse_minecraft_argument(
         .replace("${uuid}", &uuid.simple().to_string())
         .replace("${clientid}", "c4502edb-87c6-40cb-b595-64a280cf8906")
         .replace("${user_properties}", "{}")
-        .replace("${user_type}", "msa")
+        .replace("${user_type}", user_type)
         .replace("${version_name}", version)
         .replace("${assets_index_name}", asset_index_name)
         .replace(
@@ -550,4 +558,65 @@ pub async fn get_processor_main_class(
     .await??;
 
     Ok(main_class)
+}
+
+#[cfg(test)]
+mod offline_launch_tests {
+    use super::*;
+    use crate::launcher::quick_play_version::QuickPlaySingleplayerVersion;
+    use crate::state::{MinecraftProfile, derive_offline_uuid};
+
+    #[tokio::test]
+    async fn offline_launch_arguments_use_the_saved_identity() {
+        let directory = tempfile::tempdir().unwrap();
+        let uuid = derive_offline_uuid("Steve", "1234").unwrap();
+        let credentials = Credentials {
+            offline_profile: MinecraftProfile {
+                id: uuid,
+                name: "Steve".to_string(),
+                ..MinecraftProfile::default()
+            },
+            access_token: "0".to_string(),
+            refresh_token: String::new(),
+            expires: chrono::Utc::now(),
+            active: true,
+        };
+        let arguments = "--username ${auth_player_name} --uuid ${auth_uuid} --accessToken ${auth_access_token} --userType ${user_type}";
+        let modern_arguments = vec![Argument::Normal(arguments.to_string())];
+        let expected = vec![
+            "--username".to_string(),
+            "Steve".to_string(),
+            "--uuid".to_string(),
+            uuid.simple().to_string(),
+            "--accessToken".to_string(),
+            "0".to_string(),
+            "--userType".to_string(),
+            "legacy".to_string(),
+        ];
+        for (modern, legacy) in [
+            (Some(modern_arguments.as_slice()), None),
+            (None, Some(arguments)),
+        ] {
+            let actual = get_minecraft_arguments(
+                modern,
+                legacy,
+                &credentials,
+                "1.21.1",
+                "17",
+                directory.path(),
+                directory.path(),
+                &VersionType::Release,
+                WindowSize(854, 480),
+                "x86_64",
+                &QuickPlayType::None,
+                QuickPlayVersion {
+                    server: QuickPlayServerVersion::Unsupported,
+                    singleplayer: QuickPlaySingleplayerVersion::Unsupported,
+                },
+            )
+            .await
+            .unwrap();
+            assert_eq!(actual, expected);
+        }
+    }
 }

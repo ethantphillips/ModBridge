@@ -21,7 +21,6 @@ pub struct AdsState {
     pub malicious_origins: HashSet<String>,
 }
 
-const AD_LINK: &str = "https://modrinth.com/wrapper/app-ads-cookie";
 const APP_TITLE_BAR_HEIGHT: f32 = 48.0;
 #[cfg(any(windows, target_os = "macos"))]
 pub(super) const OCCLUDED_AREA_THRESHOLD: f64 = 0.5;
@@ -273,7 +272,7 @@ pub fn init<R: Runtime>() -> TauriPlugin<R> {
     tauri::plugin::Builder::<R>::new("ads")
         .setup(|app, _api| {
             app.manage(RwLock::new(AdsState {
-                shown: true,
+				shown: false,
                 visibility_holds: 0,
                 consent_required: false,
                 consent_notification_enabled: false,
@@ -282,36 +281,6 @@ pub fn init<R: Runtime>() -> TauriPlugin<R> {
                 last_click: None,
                 malicious_origins: HashSet::new(),
             }));
-
-            // We refresh the ads window periodically to mitigate memory leak issues.
-            // Skip refreshes when app state has hidden the ads WebView. The refresh does
-            // not reset the visibility state.
-            let refresh_app = app.clone();
-            tauri::async_runtime::spawn(async move {
-                loop {
-                    let should_refresh = refresh_app
-                        .state::<RwLock<AdsState>>()
-                        .try_read()
-                        .map(|state| {
-                            state.shown
-                                && state.visibility_holds == 0
-                                && !state.consent_required
-                                && !state.consent_overlay_shown
-                                && !state.occluded
-                        })
-                        .unwrap_or(false);
-
-                    if should_refresh
-                        && let Some(webview) =
-                            refresh_app.webviews().get_mut("ads-window")
-                    {
-                        let _ = webview.navigate(AD_LINK.parse().unwrap());
-                    }
-
-                    tokio::time::sleep(std::time::Duration::from_secs(60 * 5))
-                        .await;
-                }
-            });
 
             if let Some(main_window) = app.get_window("main") {
                 let app_handle = app.clone();
@@ -468,221 +437,11 @@ fn sync_ads_webview_visibility<R: Runtime>(
     Ok(())
 }
 
+/// Ads require third-party web traffic and are disabled in Relay-only mode.
 #[tauri::command]
-#[cfg(not(target_os = "linux"))]
-pub async fn init_ads_window<R: Runtime>(
-    app: tauri::AppHandle<R>,
-    dpr: f32,
-    override_shown: bool,
-) -> crate::api::Result<()> {
-    use tauri::WebviewUrl;
-
-    let state = app.state::<RwLock<AdsState>>();
-    let mut state = state.write().await;
-
-    if override_shown {
-        state.shown = true;
-    }
-
-    let layout = if state.consent_overlay_shown {
-        get_overlay_webview_position(&app)
-    } else {
-        get_webview_position(&app, dpr)
-    };
-
-    if let Ok((position, size)) = layout {
-        let webview = if let Some(webview) = app.webviews().get("ads-window") {
-            sync_ads_webview_visibility(&app, &state, dpr)?;
-            Some(webview.clone())
-        } else if let Some(window) = app.get_window("main") {
-            let ads_consent_script = [
-                "(() => {",
-                include_str!("ads-consent/state.js"),
-                include_str!("ads-consent/styles.js"),
-                include_str!("ads-consent/bridge.js"),
-                include_str!("ads-consent/cmp.js"),
-                include_str!("ads-consent/media.js"),
-                include_str!("ads-consent/controller.js"),
-                include_str!("ads-consent/index.js"),
-                "})()",
-            ]
-            .join("\n");
-
-            #[cfg(windows)]
-            let webview_url =
-                WebviewUrl::External("about:blank".parse().unwrap());
-            #[cfg(not(windows))]
-            let webview_url = WebviewUrl::External(AD_LINK.parse().unwrap());
-
-            let webview = window.add_child(
-                tauri::webview::WebviewBuilder::new("ads-window", webview_url)
-                    .initialization_script_for_all_frames(ads_consent_script)
-                    // We use a standard Chrome user agent for compatibility with our ad provider,
-                    // since Tauri is not recognized by ad providers by default.
-                    // Aditude has separately informed SSPs and IVT vendors that this traffic
-                    // originates from a desktop app.
-                    .user_agent(ADS_USER_AGENT)
-                    .zoom_hotkeys_enabled(false)
-                    .transparent(true)
-                    .on_new_window(|_, _| {
-                        tauri::webview::NewWindowResponse::Deny
-                    }),
-                // set both the `hide`/`show` state and `position`,
-                // to ensure that the webview is actually shown/hidden
-                if should_show_ads_webview(&state) {
-                    position
-                } else {
-                    PhysicalPosition::new(-1000.0, -1000.0)
-                },
-                size,
-            )?;
-
-            sync_ads_webview_visibility(&app, &state, dpr)?;
-
-            webview.with_webview(#[allow(unused_variables)] |webview2| {
-                #[cfg(windows)]
-                {
-                    use webview2_com::CallDevToolsProtocolMethodCompletedHandler;
-                    use webview2_com::Microsoft::Web::WebView2::Win32::ICoreWebView2_8;
-                    use windows_core::Interface;
-                    use windows_core::HSTRING;
-
-                    let core_webview2 =
-                        unsafe { webview2.controller().CoreWebView2() };
-
-                    if let Ok(core_webview2) = core_webview2 {
-                        configure_ads_cookie_settings(&core_webview2);
-
-                        let navigate_webview = core_webview2.clone();
-                        let handler =
-                            CallDevToolsProtocolMethodCompletedHandler::create(
-                                Box::new(move |result: windows_core::Result<()>, _| {
-                                    if let Err(error) = result {
-                                        tracing::error!(
-                                            ?error,
-                                            "Failed to override ads user-agent client hints"
-                                        );
-                                    }
-
-                                    unsafe {
-                                        navigate_webview
-                                            .Navigate(&HSTRING::from(AD_LINK))
-                                            .ok();
-                                    }
-
-                                    Ok(())
-                                }) as Box<_>,
-                            );
-
-                        unsafe {
-                            if let Err(error) = core_webview2
-                                .CallDevToolsProtocolMethod(
-                                    &HSTRING::from(
-                                        "Emulation.setUserAgentOverride",
-                                    ),
-                                    &HSTRING::from(
-                                        ads_user_agent_override_params(),
-                                    ),
-                                    &handler,
-                                )
-                            {
-                                tracing::error!(
-                                    ?error,
-                                    "Failed to install ads user-agent client hints override"
-                                );
-
-                                core_webview2.Navigate(&HSTRING::from(AD_LINK)).ok();
-                            }
-                        }
-                    }
-
-                    let webview2_controller = webview2.controller();
-                    let Ok(webview2_8) = unsafe { webview2_controller.CoreWebView2() }
-                        .and_then(|core_webview2| core_webview2.cast::<ICoreWebView2_8>())
-                    else {
-                        return;
-                    };
-
-                    unsafe { webview2_8.SetIsMuted(true) }.ok();
-                }
-            })?;
-
-            Some(webview)
-        } else {
-            None
-        };
-
-        if webview.is_none() {
-            return Ok(());
-        }
-
-        // tauri::async_runtime::spawn(async move {
-        //     loop {
-        //         webview.with_webview(|wv| {
-        //             #[cfg(windows)]
-        //             {
-        //                 use webview2_com::ExecuteScriptCompletedHandler;
-
-        //                 let core_webview2 = unsafe {
-        //                     webview.controller().CoreWebView2().unwrap()
-        //                 };
-
-        //                 let handler = ExecuteScriptCompletedHandler::create(Box::new(
-        //                     move |hr: windows_core::Result<()>, result: String| {
-        //                         if hr.is_ok() {
-        //                             let hidden: bool = serde_json::from_str(&result).unwrap_or(true);
-        //                             tracing::error!("!! ads wv hidden? {}", hidden);
-        //                         }
-        //                         Ok(())
-        //                     },
-        //                 ) as Box<_>);
-
-        //                 unsafe {
-        //                     let _ = core_webview2.ExecuteScript(
-        //                         windows_core::w!("document.hidden"),
-        //                         &handler,
-        //                     );
-        //                 }
-        //             }
-
-        //             #[cfg(not(windows))]
-        //             {
-        //                 use webkit2gtk::WebViewExt;
-
-        //                 wv.inner().evaluate_javascript(
-        //                     "document.hidden",
-        //                     None,
-        //                     None,
-        //                     None::<&webkit2gtk::gio::Cancellable>,
-        //                     |result| {
-        //                         use javascriptcore::ValueExt;
-
-        //                         let hidden = result.map(|v| v.to_boolean());
-        //                         tracing::error!("!! ads wv hidden? {hidden:?}");
-        //                     },
-        //                 );
-        //             }
-        //         });
-
-        //         tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
-        //     }
-        // });
-    }
-
-    if state.shown
-        && state.consent_required
-        && state.consent_notification_enabled
-    {
-        emit_ads_consent_required(true);
-    }
-
-    Ok(())
+pub async fn init_ads_window() -> crate::api::Result<()> {
+	Ok(())
 }
-
-// TODO: make ads work on linux
-#[tauri::command]
-#[cfg(target_os = "linux")]
-pub async fn init_ads_window() {}
 
 #[tauri::command]
 pub async fn update_ads_window_hold<R: Runtime>(
@@ -825,10 +584,9 @@ pub async fn finish_ads_consent_flow<R: Runtime>(
     app: tauri::AppHandle<R>,
     dpr: Option<f32>,
 ) -> crate::api::Result<()> {
-    if let Some(webview) = app.webviews().get("ads-window") {
+	if app.webviews().contains_key("ads-window") {
         let state = app.state::<RwLock<AdsState>>();
         let mut state = state.write().await;
-        let should_reload_ads = state.consent_required;
 
         state.consent_required = false;
         state.consent_notification_enabled = false;
@@ -839,12 +597,6 @@ pub async fn finish_ads_consent_flow<R: Runtime>(
             &state,
             get_device_pixel_ratio(&app, dpr),
         )?;
-
-        drop(state);
-
-        if should_reload_ads {
-            webview.navigate(AD_LINK.parse().unwrap()).ok();
-        }
     }
 
     emit_ads_consent_required(false);

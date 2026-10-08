@@ -48,11 +48,17 @@ impl CensoredString {
             .replace(&format!("/{username}/"), "/{COMPUTER_USERNAME}/")
             .replace(&format!("\\{username}\\"), "\\{COMPUTER_USERNAME}\\");
         for credentials in credentials_list {
+            if !credentials.is_offline() && !credentials.access_token.is_empty()
+            {
+                s = s.replace(
+                    &credentials.access_token,
+                    "{MINECRAFT_ACCESS_TOKEN}",
+                );
+            }
             // Use the offline profile to guarantee that this function does not cause
             // Mojang API request, and is never delayed by a network request. The offline
             // profile is optimistically updated on upsert from time to time anyway
             s = s
-                .replace(&credentials.access_token, "{MINECRAFT_ACCESS_TOKEN}")
                 .replace(
                     &credentials.offline_profile.name,
                     "{MINECRAFT_USERNAME}",
@@ -68,6 +74,65 @@ impl CensoredString {
         }
 
         Self(s)
+    }
+}
+
+#[cfg(test)]
+mod log_identity_tests {
+    use super::*;
+    use crate::state::MinecraftProfile;
+
+    fn credentials(name: &str, token: &str, refresh: &str) -> Credentials {
+        Credentials {
+            offline_profile: MinecraftProfile {
+                id: uuid::Uuid::new_v4(),
+                name: name.to_string(),
+                ..MinecraftProfile::default()
+            },
+            access_token: token.to_string(),
+            refresh_token: refresh.to_string(),
+            expires: chrono::Utc::now(),
+            active: true,
+        }
+    }
+
+    #[test]
+    fn offline_logs_preserve_zero_digits_and_redact_identity() {
+        let account = credentials("LocalPlayer", "0", "");
+        let input = format!(
+            "[20:00:01] LocalPlayer {} {} loaded 100 chunks with token 0",
+            account.offline_profile.id.simple(),
+            account.offline_profile.id.hyphenated(),
+        );
+        let censored = CensoredString::censor(input, &[account]);
+        assert_eq!(
+            censored.0,
+            "[20:00:01] {MINECRAFT_USERNAME} {MINECRAFT_UUID} {MINECRAFT_UUID} loaded 100 chunks with token 0",
+        );
+    }
+
+    #[test]
+    fn online_tokens_still_redacted_with_offline_accounts_present() {
+        let offline = credentials("LocalPlayer", "0", "");
+        let online = credentials("OnlinePlayer", "secret-token", "refresh");
+        let censored = CensoredString::censor(
+            "[20:00:01] OnlinePlayer secret-token LocalPlayer 100".to_string(),
+            &[offline, online],
+        );
+        assert_eq!(
+            censored.0,
+            "[20:00:01] {MINECRAFT_USERNAME} {MINECRAFT_ACCESS_TOKEN} {MINECRAFT_USERNAME} 100",
+        );
+    }
+
+    #[test]
+    fn empty_tokens_do_not_insert_markers_between_characters() {
+        let account = credentials("OnlinePlayer", "", "refresh");
+        let censored = CensoredString::censor(
+            "Loading 100 chunks".to_string(),
+            &[account],
+        );
+        assert_eq!(censored.0, "Loading 100 chunks");
     }
 }
 

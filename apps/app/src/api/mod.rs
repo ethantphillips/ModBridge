@@ -46,22 +46,22 @@ pub type Result<T> = std::result::Result<T, TheseusSerializableError>;
 // Serializable error intermediary, so TheseusGuiError can be Serializable (eg: so that we can return theseus::Errors in Tauri directly)
 #[derive(Error, Debug)]
 pub enum TheseusSerializableError {
-    #[error("{0}")]
-    Theseus(#[from] theseus::Error),
+	#[error("{0}")]
+	Theseus(#[from] theseus::Error),
 
-    #[error("IO error: {0}")]
-    IO(#[from] std::io::Error),
+	#[error("IO error: {0}")]
+	IO(#[from] std::io::Error),
 
-    #[error("Tauri error: {0}")]
-    Tauri(#[from] tauri::Error),
+	#[error("Tauri error: {0}")]
+	Tauri(#[from] tauri::Error),
 
-    #[cfg(feature = "updater")]
-    #[error("Updater error: {0}")]
-    Updater(#[from] tauri_plugin_updater::Error),
+	#[cfg(feature = "updater")]
+	#[error("Updater error: {0}")]
+	Updater(#[from] tauri_plugin_updater::Error),
 
-    #[cfg(feature = "updater")]
-    #[error("HTTP error: {0}")]
-    Http(#[from] tauri_plugin_http::reqwest::Error),
+	#[cfg(feature = "updater")]
+	#[error("HTTP error: {0}")]
+	Http(#[from] reqwest::Error),
 }
 
 // Generic implementation of From<T> for ErrorTypeA
@@ -129,14 +129,14 @@ macro_rules! impl_serialize {
 // Use the macro to implement Serialize for TheseusSerializableError
 #[cfg(not(feature = "updater"))]
 impl_serialize! {
-    IO,
-    Tauri,
+	IO,
+	Tauri,
 }
 
 #[cfg(feature = "updater")]
 impl_serialize! {
-    IO,
-    Tauri,
-    Updater,
-    Http,
+	IO,
+	Tauri,
+	Updater,
+	Http,
 }

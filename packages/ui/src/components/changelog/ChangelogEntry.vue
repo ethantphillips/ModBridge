@@ -36,7 +36,7 @@
 			</div>
 		</div>
 		<div class="ml-8 mt-3 rounded-2xl bg-bg-raised px-4 py-3">
-			<div class="changelog-body" v-html="renderHighlightedString(entry.body)" />
+			<div class="changelog-body" v-html="changelogHtml" />
 		</div>
 	</div>
 </template>
@@ -47,11 +47,16 @@ import { renderHighlightedString } from '@modrinth/utils'
 import dayjs from 'dayjs'
 import { computed, ref } from 'vue'
 
+import { injectModrinthClient } from '#ui/providers/api-client'
+import { commonMessages } from '#ui/utils/common-messages'
+import { renderForClient } from '#ui/utils/render-for-client'
+
 import { useFormatDateTime, useRelativeTime } from '../../composables'
 import { defineMessages, useVIntl } from '../../composables/i18n'
 import AutoLink from '../base/AutoLink.vue'
 
 const { formatMessage } = useVIntl()
+const client = injectModrinthClient(null)
 const formatRelativeTime = useRelativeTime()
 const formatDateTime = useFormatDateTime({
 	timeStyle: 'short',
@@ -76,6 +81,13 @@ const props = withDefaults(
 )
 
 const currentDate = ref(dayjs())
+const changelogHtml = computed(() =>
+	renderForClient(
+		renderHighlightedString(props.entry.body),
+		client,
+		formatMessage(commonMessages.openInBrowserButton),
+	),
+)
 const recent = computed(() => props.entry.date.isAfter(currentDate.value.subtract(1, 'week')))
 const future = computed(() => props.entry.date.isAfter(currentDate.value))
 const dateTooltip = computed(() => formatDateTime(props.entry.date.toDate()))

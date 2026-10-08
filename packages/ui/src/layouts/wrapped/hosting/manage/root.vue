@@ -1,6 +1,6 @@
 <template>
 	<div
-		v-if="filteredNotices.length > 0"
+		v-if="filteredNotices.length > 0 || (surveyNotice && !client.allowExternalEmbeds)"
 		class="relative mx-auto mb-4 flex w-full min-w-0 flex-col gap-3 px-6"
 		:class="{
 			'max-w-[1280px]': constrainWidth,
@@ -16,6 +16,20 @@
 			class="w-full"
 			@dismiss="() => dismissNotice(notice.id)"
 		/>
+		<Admonition
+			v-if="surveyNotice && !client.allowExternalEmbeds"
+			type="info"
+			:header="surveyNotice.title || formatMessage(surveyMessages.title)"
+			:body="formatMessage(surveyMessages.body)"
+			:dismissible="surveyNotice.dismissable"
+			@dismiss="dismissSurvey"
+		>
+			<template #actions>
+				<ButtonLink :href="surveyUrl" target="_blank">
+					{{ formatMessage(commonMessages.openInBrowserButton) }}
+				</ButtonLink>
+			</template>
+		</Admonition>
 	</div>
 	<div
 		v-if="serverData && serverData.node === null && serverData.status !== 'suspended'"
@@ -332,8 +346,9 @@ import DOMPurify from 'dompurify'
 import { computed, nextTick, onBeforeUnmount, onMounted, onUnmounted, ref, watch } from 'vue'
 import { onBeforeRouteLeave, useRoute, useRouter } from 'vue-router'
 
+import Admonition from '#ui/components/base/Admonition.vue'
 import Avatar from '#ui/components/base/Avatar.vue'
-import { IconButton, TeleportOverflowMenu } from '#ui/components/base/buttons'
+import { ButtonLink, IconButton, TeleportOverflowMenu } from '#ui/components/base/buttons'
 import ErrorInformationCard from '#ui/components/base/ErrorInformationCard.vue'
 import NavTabs from '#ui/components/base/NavTabs.vue'
 import PageHeader from '#ui/components/base/page-header/index.vue'
@@ -592,7 +607,9 @@ const {
 })
 
 const serverHeaderImage = computed(() =>
-	serverData.value?.is_medal ? 'https://cdn.modrinth.com/medal_icon.webp' : serverImage.value,
+	serverData.value?.is_medal
+		? client.resolveMediaUrl('https://cdn.modrinth.com/medal_icon.webp')
+		: serverImage.value,
 )
 
 const showServerUptime = computed(() => props.showUptime && serverPowerState.value === 'running')
@@ -812,6 +829,19 @@ const filteredNotices = computed(
 	() => serverData.value?.notices?.filter((n) => n.level !== 'survey') ?? [],
 )
 const surveyNotice = computed(() => serverData.value?.notices?.find((n) => n.level === 'survey'))
+const surveyUrl = computed(() =>
+	surveyNotice.value ? `https://tally.so/r/${encodeURIComponent(surveyNotice.value.message)}` : '',
+)
+const surveyMessages = defineMessages({
+	title: {
+		id: 'servers.manage.survey.title',
+		defaultMessage: 'Share your feedback',
+	},
+	body: {
+		id: 'servers.manage.survey.body',
+		defaultMessage: 'Tell us about your experience with your server.',
+	},
+})
 
 async function dismissNotice(noticeId: number) {
 	await client.archon.servers_v0.dismissNotice(props.serverId, noticeId).catch((err) => {
@@ -893,7 +923,7 @@ function getTally(): { openPopup?: (id: string, opts: TallyPopupOptions) => void
 }
 
 function showSurvey() {
-	if (!surveyNotice.value) return
+	if (!client.allowExternalEmbeds || !surveyNotice.value) return
 
 	try {
 		const tally = getTally()
@@ -906,6 +936,7 @@ function showSurvey() {
 }
 
 function loadTallyScript() {
+	if (!client.allowExternalEmbeds) return
 	if (document.querySelector('script[src*="tally.so"]')) return
 	const script = document.createElement('script')
 	script.src = 'https://tally.so/widgets/embed.js'

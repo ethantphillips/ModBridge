@@ -247,20 +247,17 @@ async fn run_credentials(
         && !credentials.is_offline()
     {
         let server_id = uuid::Uuid::new_v4().to_string();
-        let join_url = fetch::route_url_through_relay(
+        let join_req = fetch::relay_request(
+			&fetch::INSECURE_REQWEST_CLIENT,
+			reqwest::Method::POST,
             "https://sessionserver.mojang.com/session/minecraft/join",
-        );
-        let mut join_req = fetch::INSECURE_REQWEST_CLIENT
-			.post(&join_url)
+		)?
 			.json(&json!({
 				"accessToken": &credentials.access_token,
 				"selectedProfile": credentials.offline_profile.id.simple().to_string(),
 				"serverId": &server_id,
 			}))
 			.timeout(Duration::from_secs(5));
-        if let Some(token) = fetch::get_relay_token() {
-            join_req = join_req.header("X-Modbridge-Token", token);
-        }
         let join_result = join_req.send().await;
 
         match join_result {
@@ -297,7 +294,14 @@ async fn run_credentials(
         }
     }
 
-    crate::minecraft_skins::flush_pending_skin_change().await?;
+    if credentials.is_offline() {
+        crate::minecraft_skins::flush_pending_skin_change_for_profile(
+            credentials.offline_profile.id,
+        )
+        .await?;
+    } else {
+        crate::minecraft_skins::flush_pending_skin_change().await?;
+    }
     crate::launcher::launch_minecraft(
         &java_args,
         &launch_env_args,

@@ -1,6 +1,14 @@
 <script setup lang="ts">
 import { VideoIcon } from '@modrinth/assets'
 
+import { ButtonLink } from '#ui/components/base/buttons'
+import { useVIntl } from '#ui/composables/i18n'
+import { injectModrinthClient } from '#ui/providers/api-client'
+import { commonMessages } from '#ui/utils/common-messages'
+
+const client = injectModrinthClient(null)
+const { formatMessage } = useVIntl()
+
 withDefaults(
 	defineProps<{
 		embed?: boolean
@@ -40,7 +48,7 @@ withDefaults(
 			>
 		</div>
 		<div
-			v-if="embed"
+			v-if="embed && (client?.allowExternalEmbeds ?? true)"
 			style="left: 0; width: 100%; height: 0; position: relative; padding-bottom: 56.25%"
 		>
 			<iframe
@@ -58,6 +66,11 @@ withDefaults(
 				"
 				referrerpolicy="strict-origin"
 			></iframe>
+		</div>
+		<div v-else-if="embed" class="px-4 pb-4">
+			<ButtonLink href="https://www.youtube.com/watch?v=p1Dg-fud0TQ" target="_blank">
+				<VideoIcon /> {{ formatMessage(commonMessages.openInBrowserButton) }}
+			</ButtonLink>
 		</div>
 	</div>
 </template>

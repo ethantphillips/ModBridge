@@ -175,6 +175,22 @@ enum PendingSkinChange {
 }
 
 impl PendingSkinChange {
+    fn credentials(&self) -> &Credentials {
+        match self {
+            Self::AddAndEquipCustom {
+                selected_credentials,
+                ..
+            }
+            | Self::Equip {
+                selected_credentials,
+                ..
+            }
+            | Self::Unequip {
+                selected_credentials,
+            } => selected_credentials,
+        }
+    }
+
     fn profile_id(&self) -> Uuid {
         match self {
             Self::AddAndEquipCustom {
@@ -539,6 +555,7 @@ pub async fn add_and_equip_custom_skin(
     let selected_credentials = Credentials::get_default_credential(&state.pool)
         .await?
         .ok_or(ErrorKind::NoCredentialsError)?;
+    mojang_api::require_online_credentials(&selected_credentials)?;
     let cape_id = cape.map(|cape| cape.id);
     let local_texture_key = local_skin_texture_key(&texture_blob);
 
@@ -560,7 +577,7 @@ pub async fn add_and_equip_custom_skin(
         cape_id,
         local_texture_key: Arc::clone(&local_texture_key),
     })
-    .await;
+    .await?;
 
     Ok(Skin {
         texture_key: local_texture_key,
@@ -701,7 +718,7 @@ pub async fn equip_skin(skin: Skin) -> crate::Result<()> {
         selected_credentials,
         skin,
     })
-    .await;
+    .await?;
 
     Ok(())
 }
@@ -984,7 +1001,7 @@ pub async fn unequip_skin() -> crate::Result<()> {
     set_pending_skin_change(PendingSkinChange::Unequip {
         selected_credentials,
     })
-    .await;
+    .await?;
 
     Ok(())
 }
@@ -1047,7 +1064,10 @@ pub async fn flush_pending_skin_change_for_profile(
     .await
 }
 
-async fn set_pending_skin_change(change: PendingSkinChange) {
+async fn set_pending_skin_change(
+    change: PendingSkinChange,
+) -> crate::Result<()> {
+    mojang_api::require_online_credentials(change.credentials())?;
     let profile_id = change.profile_id();
     let generation = {
         let mut state = PENDING_SKIN_CHANGE.lock().await;
@@ -1064,6 +1084,7 @@ async fn set_pending_skin_change(change: PendingSkinChange) {
     };
 
     schedule_pending_skin_change_flush(profile_id, generation);
+    Ok(())
 }
 
 fn schedule_pending_skin_change_flush(profile_id: Uuid, generation: u64) {
@@ -1193,6 +1214,9 @@ async fn flush_pending_skin_change_inner(
 async fn execute_pending_skin_change(
     change: &PendingSkinChange,
 ) -> crate::Result<()> {
+    if change.credentials().is_offline() {
+        return Ok(());
+    }
     match change {
         PendingSkinChange::AddAndEquipCustom {
             selected_credentials,
@@ -1428,4 +1452,184 @@ async fn sync_cape(
     }
 
     Ok(())
+}
+
+#[cfg(test)]
+mod offline_skin_tests {
+    use super::*;
+
+    fn offline_credentials() -> Credentials {
+        Credentials {
+            offline_profile: MinecraftProfile {
+                id: Uuid::new_v4(),
+                name: "Steve".into(),
+                ..MinecraftProfile::default()
+            },
+            access_token: "0".into(),
+            refresh_token: String::new(),
+            expires: chrono::Utc::now(),
+            active: true,
+        }
+    }
+
+    #[tokio::test]
+    async fn offline_profiles_cannot_queue_skin_changes() {
+        let changes = [
+            PendingSkinChange::Unequip {
+                selected_credentials: offline_credentials(),
+            },
+            PendingSkinChange::Equip {
+                selected_credentials: offline_credentials(),
+                skin: get_fallback_default_skin().unwrap().clone(),
+            },
+            PendingSkinChange::AddAndEquipCustom {
+                selected_credentials: offline_credentials(),
+                texture_blob: Bytes::new(),
+                variant: MinecraftSkinVariant::Classic,
+                cape_id: None,
+                local_texture_key: Arc::from("local-test"),
+            },
+        ];
+        for change in changes {
+            let profile_id = change.profile_id();
+            let error = set_pending_skin_change(change).await.unwrap_err();
+            assert!(error.to_string().contains("save and preview"));
+            assert!(
+                !PENDING_SKIN_CHANGE
+                    .lock()
+                    .await
+                    .pending
+                    .contains_key(&profile_id)
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn stale_offline_skin_changes_are_discarded_without_retry() {
+        let credentials = offline_credentials();
+        let profile_id = credentials.offline_profile.id;
+        PENDING_SKIN_CHANGE.lock().await.pending.insert(
+            profile_id,
+            PendingSkinChangeEntry {
+                change: PendingSkinChange::Unequip {
+                    selected_credentials: credentials,
+                },
+                generation: 1,
+            },
+        );
+        flush_pending_skin_change_for_profile(profile_id)
+            .await
+            .unwrap();
+        assert!(
+            !PENDING_SKIN_CHANGE
+                .lock()
+                .await
+                .pending
+                .contains_key(&profile_id)
+        );
+    }
+
+    #[tokio::test]
+    async fn offline_mojang_operations_fail_before_any_network_request() {
+        let credentials = offline_credentials();
+        assert!(
+            mojang_api::MinecraftSkinOperation::equip(
+                &credentials,
+                stream::iter([Ok::<_, String>(Bytes::new())]),
+                MinecraftSkinVariant::Classic,
+            )
+            .await
+            .is_err()
+        );
+        assert!(
+            mojang_api::MinecraftSkinOperation::unequip_any(&credentials)
+                .await
+                .is_err()
+        );
+        assert!(
+            mojang_api::MinecraftCapeOperation::equip(
+                &credentials,
+                Uuid::new_v4(),
+            )
+            .await
+            .is_err()
+        );
+        assert!(
+            mojang_api::MinecraftCapeOperation::unequip_any(&credentials)
+                .await
+                .is_err()
+        );
+    }
+
+    #[tokio::test]
+    async fn offline_profiles_can_store_edit_and_remove_custom_skins() {
+        let pool = sqlx::sqlite::SqlitePoolOptions::new()
+            .max_connections(1)
+            .connect("sqlite::memory:")
+            .await
+            .unwrap();
+        sqlx::migrate!().run(&pool).await.unwrap();
+        let credentials =
+            Credentials::create_offline_user("Steve", "1234", &pool)
+                .await
+                .unwrap();
+        let profile_id = credentials.offline_profile.id;
+        let texture =
+            include_bytes!("minecraft_skins/assets/default/MissingNo.png");
+        let texture_key = local_skin_texture_key(texture);
+        for variant in
+            [MinecraftSkinVariant::Classic, MinecraftSkinVariant::Slim]
+        {
+            CustomMinecraftSkin::add(
+                profile_id,
+                &texture_key,
+                texture,
+                variant,
+                None,
+                CustomMinecraftSkinInsertPosition::Bottom,
+                &pool,
+            )
+            .await
+            .unwrap();
+            let saved = CustomMinecraftSkin::get_by_texture(
+                profile_id,
+                &texture_key,
+                &pool,
+            )
+            .await
+            .unwrap()
+            .unwrap();
+            assert_eq!(saved.variant, variant);
+            assert_eq!(saved.texture_blob(&pool).await.unwrap(), texture);
+            assert_eq!(
+                CustomMinecraftSkin::get_all(profile_id, &pool)
+                    .await
+                    .unwrap()
+                    .collect::<Vec<_>>()
+                    .await
+                    .len(),
+                1
+            );
+        }
+        let saved = CustomMinecraftSkin::get_by_texture(
+            profile_id,
+            &texture_key,
+            &pool,
+        )
+        .await
+        .unwrap()
+        .unwrap();
+        saved.remove(profile_id, &pool).await.unwrap();
+        assert!(
+            CustomMinecraftSkin::get_by_texture(
+                profile_id,
+                &texture_key,
+                &pool
+            )
+            .await
+            .unwrap()
+            .is_none()
+        );
+        assert!(pending_effective_skin_change(profile_id).await.is_none());
+    }
 }

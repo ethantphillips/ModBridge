@@ -21,6 +21,8 @@ export interface PageContext {
 		serverRamAsBytesAlwaysOn?: Ref<boolean>
 	}
 	openExternalUrl: (url: string) => void
+	downloadFile?: (url: string, fileName: string) => Promise<void | boolean>
+	saveBlob?: (blob: Blob, fileName: string) => Promise<void | boolean>
 }
 
 export const [injectPageContext, providePageContext] = createContext<PageContext>(

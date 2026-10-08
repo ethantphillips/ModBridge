@@ -13,6 +13,8 @@ import type Stripe from 'stripe'
 import { computed, nextTick, onBeforeUnmount, ref, toRef, useTemplateRef, watch } from 'vue'
 
 import { Button } from '#ui/components/base/buttons'
+import { injectModrinthClient } from '#ui/providers/api-client'
+import { injectPageContext } from '#ui/providers/page-context'
 import { injectNotificationManager } from '#ui/providers/web-notifications.ts'
 
 import { useDebugLogger } from '../../composables/debug-logger'
@@ -29,6 +31,8 @@ import ConfirmPurchase from './ServersPurchase3Review.vue'
 const { formatMessage } = useVIntl()
 const { addNotification } = injectNotificationManager()
 const queryClient = useQueryClient()
+const client = injectModrinthClient(null)
+const pageContext = injectPageContext(null)
 const debug = useDebugLogger('ModrinthServersPurchaseModal')
 
 export type RegionPing = {
@@ -203,13 +207,19 @@ function ensureRegionPings() {
 async function runRegionPing(region: Archon.Servers.v1.Region, index: number, signal: AbortSignal) {
 	if (signal.aborted) return
 
-	const ping = await pingWebSocketUrl(`wss://${region.shortcode}${index}.${region.zone}/pingtest`, {
-		count: PING_COUNT,
-		intervalMs: PING_INTERVAL,
-		settleDelayMs: MAX_PING_TIME,
-		timeoutMs: PING_COUNT * PING_INTERVAL + MAX_PING_TIME + 1000,
-		signal,
-	})
+	let ping = -1
+	try {
+		const url = `wss://${region.shortcode}${index}.${region.zone}/pingtest`
+		ping = await pingWebSocketUrl(client?.resolveWebSocketUrl(url) ?? url, {
+			count: PING_COUNT,
+			intervalMs: PING_INTERVAL,
+			settleDelayMs: MAX_PING_TIME,
+			timeoutMs: PING_COUNT * PING_INTERVAL + MAX_PING_TIME + 1000,
+			signal,
+		})
+	} catch {
+		ping = -1
+	}
 
 	if (signal.aborted) return
 
@@ -384,6 +394,10 @@ function begin(
 	plan?: Labrinth.Billing.Internal.Product | null,
 	project?: string,
 ) {
+	if (client?.allowExternalEmbeds === false) {
+		pageContext?.openExternalUrl('https://modrinth.com/hosting/manage')
+		return
+	}
 	loading.value = false
 
 	if (plan === null) {

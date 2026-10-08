@@ -1,6 +1,6 @@
 #![cfg_attr(
-    all(not(debug_assertions), target_os = "windows"),
-    windows_subsystem = "windows"
+	all(not(debug_assertions), target_os = "windows"),
+	windows_subsystem = "windows"
 )]
 #![recursion_limit = "256"]
 
@@ -25,58 +25,58 @@ mod updater_impl_noop;
 #[tracing::instrument(skip_all)]
 #[tauri::command]
 async fn initialize_state(
-    app: tauri::AppHandle,
-    events: tauri::ipc::Channel<tauri::ipc::InvokeResponseBody>,
+	app: tauri::AppHandle,
+	events: tauri::ipc::Channel<tauri::ipc::InvokeResponseBody>,
 ) -> api::Result<()> {
-    tracing::info!("Initializing app event state...");
-    theseus::EventState::init(app.clone(), events).await?;
+	tracing::info!("Initializing app event state...");
+	theseus::EventState::init(app.clone(), events).await?;
 
-    tracing::info!("Initializing app state...");
-    State::init(app.config().identifier.clone()).await?;
+	tracing::info!("Initializing app state...");
+	State::init(app.config().identifier.clone()).await?;
 
-    let state = State::get().await?;
-    app.asset_protocol_scope()
-        .allow_directory(state.directories.caches_dir(), true)?;
-    app.asset_protocol_scope()
-        .allow_directory(state.directories.caches_dir().join("icons"), true)?;
-    app.asset_protocol_scope()
-        .allow_directory(state.directories.icon_dir(), true)?;
-    app.fs_scope()
-        .allow_directory(state.directories.instances_dir(), true)?;
+	let state = State::get().await?;
+	app.asset_protocol_scope()
+		.allow_directory(state.directories.caches_dir(), true)?;
+	app.asset_protocol_scope()
+		.allow_directory(state.directories.caches_dir().join("icons"), true)?;
+	app.asset_protocol_scope()
+		.allow_directory(state.directories.icon_dir(), true)?;
+	app.fs_scope()
+		.allow_directory(state.directories.instances_dir(), true)?;
 
-    Ok(())
+	Ok(())
 }
 
 // Should be call once Vue has mounted the app
 #[tracing::instrument(skip_all)]
 #[tauri::command]
 fn show_window(app: tauri::AppHandle) {
-    let win = app.get_window("main").unwrap();
-    if let Err(e) = win.show() {
-        DialogBuilder::message()
-            .set_level(MessageLevel::Error)
-            .set_title("Initialization error")
-            .set_text(format!(
-                "Cannot display application window due to an error:\n{e}"
-            ))
-            .alert()
-            .show()
-            .unwrap();
-        panic!("cannot display application window")
-    } else {
-        let _ = win.set_focus();
-    }
+	let win = app.get_window("main").unwrap();
+	if let Err(e) = win.show() {
+		DialogBuilder::message()
+			.set_level(MessageLevel::Error)
+			.set_title("Initialization error")
+			.set_text(format!(
+				"Cannot display application window due to an error:\n{e}"
+			))
+			.alert()
+			.show()
+			.unwrap();
+		panic!("cannot display application window")
+	} else {
+		let _ = win.set_focus();
+	}
 }
 
 #[tauri::command]
 fn is_dev() -> bool {
-    cfg!(debug_assertions)
+	cfg!(debug_assertions)
 }
 
 #[tauri::command]
 fn are_updates_enabled() -> bool {
-    cfg!(feature = "updater")
-        && env::var("MODRINTH_EXTERNAL_UPDATE_PROVIDER").is_err()
+	cfg!(feature = "updater")
+		&& env::var("MODRINTH_EXTERNAL_UPDATE_PROVIDER").is_err()
 }
 
 #[cfg(feature = "updater")]
@@ -85,38 +85,60 @@ pub use updater_impl::*;
 #[cfg(not(feature = "updater"))]
 pub use updater_impl_noop::*;
 
+#[cfg(any(target_os = "linux", target_os = "windows"))]
+fn webview_proxy_url(
+	value: &str,
+) -> std::result::Result<url::Url, &'static str> {
+	let proxy =
+		url::Url::parse(value).map_err(|_| "Invalid webview proxy URL")?;
+	if !matches!(proxy.scheme(), "http" | "socks5")
+		|| proxy.host_str().is_none()
+		|| !proxy.username().is_empty()
+		|| proxy.password().is_some()
+		|| !matches!(proxy.path(), "" | "/")
+		|| proxy.query().is_some()
+		|| proxy.fragment().is_some()
+	{
+		return Err(
+			"The webview requires an HTTP or SOCKS5 proxy without URL credentials",
+		);
+	}
+	Ok(proxy)
+}
+
 // Toggles decorations
 #[tauri::command]
 async fn toggle_decorations(b: bool, window: tauri::Window) -> api::Result<()> {
-    window.set_decorations(b).map_err(|e| {
-        theseus::Error::from(theseus::ErrorKind::OtherError(format!(
-            "Failed to toggle decorations: {e}"
-        )))
-    })?;
-    Ok(())
+	window.set_decorations(b).map_err(|e| {
+		theseus::Error::from(theseus::ErrorKind::OtherError(format!(
+			"Failed to toggle decorations: {e}"
+		)))
+	})?;
+	Ok(())
 }
 
 #[tauri::command]
 fn restart_app(app: tauri::AppHandle) {
-    app.restart();
+	app.restart();
 }
 
 #[tauri::command]
 async fn set_restart_after_pending_update(
-    should_restart: bool,
+	should_restart: bool,
 ) -> api::Result<()> {
-    let state = State::get().await?;
-    state
-        .restart_after_pending_update
-        .store(should_restart, Ordering::Relaxed);
-    Ok(())
+	let state = State::get().await?;
+	state
+		.restart_after_pending_update
+		.store(should_restart, Ordering::Relaxed);
+	Ok(())
 }
 
 // if Tauri app is called with arguments, then those arguments will be treated as commands
 // ie: deep links or filepaths for .mrpacks
 fn main() {
 	// 100% Portable Mode Initialization
-	let is_portable_flag = std::env::args().any(|arg| arg == "--portable" || arg == "-p");
+	let is_portable_flag =
+		std::env::args().any(|arg| arg == "--portable" || arg == "-p");
 	let is_portable_env = std::env::var("MODBRIDGE_PORTABLE")
 		.map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
 		.unwrap_or(false);
@@ -141,7 +163,9 @@ fn main() {
 				};
 				let _ = std::fs::create_dir_all(&data_dir);
 				let _ = std::fs::create_dir_all(data_dir.join("webview"));
-				let _ = std::fs::create_dir_all(data_dir.join("backups").join("app-db"));
+				let _ = std::fs::create_dir_all(
+					data_dir.join("backups").join("app-db"),
+				);
 
 				unsafe {
 					std::env::set_var("MODBRIDGE_PORTABLE", "1");
@@ -155,187 +179,216 @@ fn main() {
 					#[cfg(target_os = "windows")]
 					{
 						// Ensure WebView2 runtime isolates all user data into the portable directory
-						std::env::set_var("WEBVIEW2_USER_DATA_FOLDER", data_dir.join("webview"));
+						std::env::set_var(
+							"WEBVIEW2_USER_DATA_FOLDER",
+							data_dir.join("webview"),
+						);
 					}
 				}
 			}
 		}
 	}
-    #[cfg(feature = "export-app-events")]
-    theseus::export_app_event_bindings(
-        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-            .join("../app-frontend/src/generated/app-events"),
-    )
-    .expect("failed to export app event TypeScript bindings");
+	#[cfg(feature = "export-app-events")]
+	theseus::export_app_event_bindings(
+		std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+			.join("../app-frontend/src/generated/app-events"),
+	)
+	.expect("failed to export app event TypeScript bindings");
 
-    /*
-        tracing is set basd on the environment variable RUST_LOG=xxx, depending on the amount of logs to show
-            ERROR > WARN > INFO > DEBUG > TRACE
-        eg. RUST_LOG=info will show info, warn, and error logs
-            RUST_LOG="theseus=trace" will show *all* messages but from theseus only (and not dependencies using similar crates)
-            RUST_LOG="theseus=trace" will show *all* messages but from theseus only (and not dependencies using similar crates)
+	/*
+		tracing is set basd on the environment variable RUST_LOG=xxx, depending on the amount of logs to show
+			ERROR > WARN > INFO > DEBUG > TRACE
+		eg. RUST_LOG=info will show info, warn, and error logs
+			RUST_LOG="theseus=trace" will show *all* messages but from theseus only (and not dependencies using similar crates)
+			RUST_LOG="theseus=trace" will show *all* messages but from theseus only (and not dependencies using similar crates)
 
-        Error messages returned to Tauri will display as traced error logs if they return an error.
-        This will also include an attached span trace if the error is from a tracing error, and the level is set to info, debug, or trace
+		Error messages returned to Tauri will display as traced error logs if they return an error.
+		This will also include an attached span trace if the error is from a tracing error, and the level is set to info, debug, or trace
 
-        on unix:
-            RUST_LOG="theseus=trace" {run command}
+		on unix:
+			RUST_LOG="theseus=trace" {run command}
 
-    */
+	*/
 
-    let tauri_context = tauri::generate_context!();
+	let mut tauri_context = tauri::generate_context!();
+	#[cfg(any(target_os = "linux", target_os = "windows"))]
+	if let Some(value) = [
+		"HTTPS_PROXY",
+		"https_proxy",
+		"HTTP_PROXY",
+		"http_proxy",
+		"ALL_PROXY",
+		"all_proxy",
+	]
+	.into_iter()
+	.filter_map(|key| env::var(key).ok())
+	.find(|value| !value.trim().is_empty())
+	{
+		match webview_proxy_url(value.trim()) {
+			Ok(proxy) => {
+				for window in &mut tauri_context.config_mut().app.windows {
+					window.proxy_url = Some(proxy.clone());
+				}
+			}
+			Err(message) => {
+				eprintln!("Cannot initialize ModBridge networking: {message}");
+				std::process::exit(1);
+			}
+		}
+	}
 
-    let _log_guard = theseus::start_logger(&tauri_context.config().identifier);
+	let _log_guard = theseus::start_logger(&tauri_context.config().identifier);
 
-    tracing::info!("Initialized tracing subscriber. Loading ModBridge!");
+	tracing::info!("Initialized tracing subscriber. Loading ModBridge!");
 
-    let mut builder = tauri::Builder::default();
+	let mut builder = tauri::Builder::default();
 
-    #[cfg(target_os = "macos")]
-    {
-        builder = builder
-            .menu(macos::menu::create)
-            .on_menu_event(macos::menu::handle_event);
-    }
+	#[cfg(target_os = "macos")]
+	{
+		builder = builder
+			.menu(macos::menu::create)
+			.on_menu_event(macos::menu::handle_event);
+	}
 
-    #[cfg(feature = "updater")]
-    {
-        use tauri_plugin_http::reqwest::header::{HeaderValue, USER_AGENT};
-        use theseus::launcher_user_agent;
-        builder = builder.plugin(
-            tauri_plugin_updater::Builder::new()
-                .header(
-                    USER_AGENT,
-                    HeaderValue::from_str(&launcher_user_agent()).unwrap(),
-                )
-                .unwrap()
-                .build(),
-        );
-    }
+	#[cfg(feature = "updater")]
+	{
+		use tauri_plugin_http::reqwest::header::{HeaderValue, USER_AGENT};
+		use theseus::launcher_user_agent;
+		builder = builder.plugin(
+			tauri_plugin_updater::Builder::new()
+				.header(
+					USER_AGENT,
+					HeaderValue::from_str(&launcher_user_agent()).unwrap(),
+				)
+				.unwrap()
+				.build(),
+		);
+	}
 
-    builder = builder
-        .plugin(tauri_plugin_single_instance::init(|app, args, _cwd| {
-            if let Some(payload) = args.get(1) {
-                tracing::info!("Handling command-line deep link");
-                let payload = payload.clone();
-                tauri::async_runtime::spawn(api::utils::handle_command(
-                    payload,
-                ));
-            }
+	builder = builder
+		.plugin(tauri_plugin_single_instance::init(|app, args, _cwd| {
+			if let Some(payload) = args.get(1) {
+				tracing::info!("Handling command-line deep link");
+				let payload = payload.clone();
+				tauri::async_runtime::spawn(api::utils::handle_command(
+					payload,
+				));
+			}
 
-            if let Some(win) = app.get_window("main") {
-                let _ = win.set_focus();
-            }
-        }))
-        .plugin(tauri_plugin_http::init())
-        .plugin(tauri_plugin_os::init())
-        .plugin(tauri_plugin_dialog::init())
-        .plugin(tauri_plugin_deep_link::init())
-        .plugin(tauri_plugin_fs::init())
-        .plugin(tauri_plugin_opener::init())
-        .plugin(
-            tauri_plugin_window_state::Builder::default()
-                .with_filename("app-window-state.json")
-                .with_denylist(&["signin"])
-                // Use *only* POSITION and SIZE state flags, because saving VISIBLE causes the `visible: false` to not take effect
-                .with_state_flags(
-                    tauri_plugin_window_state::StateFlags::POSITION
-                        | tauri_plugin_window_state::StateFlags::SIZE
-                        | tauri_plugin_window_state::StateFlags::MAXIMIZED,
-                )
-                .build(),
-        )
-        .setup(|app| {
-            #[cfg(target_os = "macos")]
-            {
-                let payload = macos::deep_link::get_or_init_payload(app);
+			if let Some(win) = app.get_window("main") {
+				let _ = win.set_focus();
+			}
+		}))
+		.plugin(tauri_plugin_http::init())
+		.plugin(tauri_plugin_os::init())
+		.plugin(tauri_plugin_dialog::init())
+		.plugin(tauri_plugin_deep_link::init())
+		.plugin(tauri_plugin_fs::init())
+		.plugin(tauri_plugin_opener::init())
+		.plugin(
+			tauri_plugin_window_state::Builder::default()
+				.with_filename("app-window-state.json")
+				.with_denylist(&["signin"])
+				// Use *only* POSITION and SIZE state flags, because saving VISIBLE causes the `visible: false` to not take effect
+				.with_state_flags(
+					tauri_plugin_window_state::StateFlags::POSITION
+						| tauri_plugin_window_state::StateFlags::SIZE
+						| tauri_plugin_window_state::StateFlags::MAXIMIZED,
+				)
+				.build(),
+		)
+		.setup(|app| {
+			#[cfg(target_os = "macos")]
+			{
+				let payload = macos::deep_link::get_or_init_payload(app);
 
-                let mtx_copy = payload.payload;
-                app.listen("deep-link://new-url", move |url| {
-                    let mtx_copy_copy = mtx_copy.clone();
-                    let request = url.payload().to_owned();
+				let mtx_copy = payload.payload;
+				app.listen("deep-link://new-url", move |url| {
+					let mtx_copy_copy = mtx_copy.clone();
+					let request = url.payload().to_owned();
 
-                    let actual_request =
-                        serde_json::from_str::<Vec<String>>(&request)
-                            .ok()
-                            .map(|mut x| x.remove(0))
-                            .unwrap_or(request);
+					let actual_request =
+						serde_json::from_str::<Vec<String>>(&request)
+							.ok()
+							.map(|mut x| x.remove(0))
+							.unwrap_or(request);
 
-                    tauri::async_runtime::spawn(async move {
-                        tracing::info!("Handling macOS deep link");
+					tauri::async_runtime::spawn(async move {
+						tracing::info!("Handling macOS deep link");
 
-                        let mut payload = mtx_copy_copy.lock().await;
-                        if payload.is_none() {
-                            *payload = Some(actual_request.clone());
-                        }
+						let mut payload = mtx_copy_copy.lock().await;
+						if payload.is_none() {
+							*payload = Some(actual_request.clone());
+						}
 
-                        let _ =
-                            api::utils::handle_command(actual_request).await;
-                    });
-                });
-            };
+						let _ =
+							api::utils::handle_command(actual_request).await;
+					});
+				});
+			};
 
-            #[cfg(not(target_os = "macos"))]
-            app.listen("deep-link://new-url", |url| {
-                let payload = url.payload().to_owned();
-                tracing::info!("Handling deep link");
-                tauri::async_runtime::spawn(api::utils::handle_command(
-                    payload,
-                ));
-            });
+			#[cfg(not(target_os = "macos"))]
+			app.listen("deep-link://new-url", |url| {
+				let payload = url.payload().to_owned();
+				tracing::info!("Handling deep link");
+				tauri::async_runtime::spawn(api::utils::handle_command(
+					payload,
+				));
+			});
 
-            #[cfg(not(target_os = "linux"))]
-            if let Some(window) = app.get_window("main")
-                && let Err(e) = window.set_shadow(true)
-            {
-                tracing::warn!("Failed to set window shadow: {e}");
-            }
+			#[cfg(not(target_os = "linux"))]
+			if let Some(window) = app.get_window("main")
+				&& let Err(e) = window.set_shadow(true)
+			{
+				tracing::warn!("Failed to set window shadow: {e}");
+			}
 
-            Ok(())
-        });
+			Ok(())
+		});
 
-    builder = builder
-        .plugin(api::auth::init())
-        .plugin(api::mr_auth::init())
-        .plugin(api::onboarding_checklist::init())
-        .plugin(api::import::init())
-        .plugin(api::install::init())
-        .plugin(api::instance::init())
-        .plugin(api::logs::init())
-        .plugin(api::jre::init())
-        .plugin(api::metadata::init())
-        .plugin(api::minecraft_skins::init())
-        .plugin(api::process::init())
-        .plugin(api::reports::init())
-        .plugin(api::settings::init())
-        .plugin(api::shortcuts::init())
-        .plugin(api::tags::init())
-        .plugin(api::users::init())
-        .plugin(api::utils::init())
-        .plugin(api::cache::init())
-        .plugin(api::files::init())
-        .plugin(api::friends::init())
-        .plugin(api::worlds::init())
-        .manage(PendingUpdateData::default())
-        .invoke_handler(tauri::generate_handler![
-            initialize_state,
-            is_dev,
-            are_updates_enabled,
-            get_update_size,
-            enqueue_update_for_installation,
-            remove_enqueued_update,
-            set_restart_after_pending_update,
-            toggle_decorations,
-            show_window,
-            restart_app,
-        ]);
+	builder = builder
+		.plugin(api::auth::init())
+		.plugin(api::mr_auth::init())
+		.plugin(api::onboarding_checklist::init())
+		.plugin(api::import::init())
+		.plugin(api::install::init())
+		.plugin(api::instance::init())
+		.plugin(api::logs::init())
+		.plugin(api::jre::init())
+		.plugin(api::metadata::init())
+		.plugin(api::minecraft_skins::init())
+		.plugin(api::process::init())
+		.plugin(api::reports::init())
+		.plugin(api::settings::init())
+		.plugin(api::shortcuts::init())
+		.plugin(api::tags::init())
+		.plugin(api::users::init())
+		.plugin(api::utils::init())
+		.plugin(api::cache::init())
+		.plugin(api::files::init())
+		.plugin(api::friends::init())
+		.plugin(api::worlds::init())
+		.manage(PendingUpdateData::default())
+		.invoke_handler(tauri::generate_handler![
+			initialize_state,
+			is_dev,
+			are_updates_enabled,
+			get_update_size,
+			check_for_update,
+			enqueue_update_for_installation,
+			remove_enqueued_update,
+			set_restart_after_pending_update,
+			toggle_decorations,
+			show_window,
+			restart_app,
+		]);
 
-    tracing::info!("Initializing app...");
-    let app = builder.build(tauri_context);
+	tracing::info!("Initializing app...");
+	let app = builder.build(tauri_context);
 
-    match app {
-        Ok(app) => {
-            app.run(|app, event| {
+	match app {
+		Ok(app) => {
+			app.run(|app, event| {
                 #[cfg(not(any(feature = "updater", target_os = "macos")))]
                 let _ = app;
 
@@ -444,17 +497,17 @@ fn main() {
                     }
                 }
             });
-        }
-        Err(e) => {
-            tracing::error!("Error while running tauri application: {:?}", e);
+		}
+		Err(e) => {
+			tracing::error!("Error while running tauri application: {:?}", e);
 
-            #[cfg(target_os = "windows")]
-            {
-                // tauri doesn't expose runtime errors, so matching a string representation seems like the only solution
-                if format!("{e:?}").contains(
-                    "Runtime(CreateWebview(WebView2Error(WindowsError",
-                ) {
-                    DialogBuilder::message()
+			#[cfg(target_os = "windows")]
+			{
+				// tauri doesn't expose runtime errors, so matching a string representation seems like the only solution
+				if format!("{e:?}").contains(
+					"Runtime(CreateWebview(WebView2Error(WindowsError",
+				) {
+					DialogBuilder::message()
                         .set_level(MessageLevel::Error)
                         .set_title("Initialization error")
                         .set_text("Your Microsoft Edge WebView2 installation is corrupt.\n\nMicrosoft Edge WebView2 is required to run ModBridge.\n\nLearn how to repair it at https://support.modrinth.com/en/articles/8797765-corrupted-microsoft-edge-webview2-installation")
@@ -462,21 +515,49 @@ fn main() {
                         .show()
                         .unwrap();
 
-                    panic!("webview2 initialization failed")
-                }
-            }
+					panic!("webview2 initialization failed")
+				}
+			}
 
-            DialogBuilder::message()
-                .set_level(MessageLevel::Error)
-                .set_title("Initialization error")
-                .set_text(format!(
-                    "Cannot initialize application due to an error:\n{e:?}"
-                ))
-                .alert()
-                .show()
-                .unwrap();
+			DialogBuilder::message()
+				.set_level(MessageLevel::Error)
+				.set_title("Initialization error")
+				.set_text(format!(
+					"Cannot initialize application due to an error:\n{e:?}"
+				))
+				.alert()
+				.show()
+				.unwrap();
 
-            panic!("{1}: {:?}", e, "error while running tauri application")
-        }
-    }
+			panic!("{1}: {:?}", e, "error while running tauri application")
+		}
+	}
+}
+
+#[cfg(all(test, any(target_os = "linux", target_os = "windows")))]
+mod proxy_tests {
+	use super::webview_proxy_url;
+
+	#[test]
+	fn inherited_webview_proxy_preserves_the_platform_transport() {
+		for (value, scheme, host, port) in [
+			("http://127.0.0.1:8080", "http", "127.0.0.1", 8080),
+			("http://proxy:8080", "http", "proxy", 8080),
+			("socks5://127.0.0.1:1080", "socks5", "127.0.0.1", 1080),
+		] {
+			let proxy = webview_proxy_url(value).unwrap();
+			assert_eq!(proxy.scheme(), scheme);
+			assert_eq!(proxy.host_str(), Some(host));
+			assert_eq!(proxy.port(), Some(port));
+		}
+		for value in [
+			"https://proxy:8080",
+			"http://secret@proxy:8080",
+			"http://proxy:8080/path",
+			"http://proxy:8080?token=secret",
+			"invalid",
+		] {
+			assert!(webview_proxy_url(value).is_err());
+		}
+	}
 }

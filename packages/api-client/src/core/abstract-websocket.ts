@@ -36,6 +36,7 @@ export abstract class AbstractWebSocketClient {
 
 	constructor(
 		protected client: {
+			resolveWebSocketUrl?: (url: string) => string
 			archon: {
 				servers_v0: {
 					getWebSocketAuth: (serverId: string) => Promise<Archon.Websocket.v0.WSAuth>

@@ -18,11 +18,18 @@ import { Button, TeleportOverflowMenu } from '#ui/components/base/buttons'
 
 import { useFormatDateTime } from '../../../composables'
 import { defineMessages, useVIntl } from '../../../composables/i18n'
+import { injectModrinthClient } from '../../../providers/api-client'
+import { injectPageContext } from '../../../providers/page-context'
+import { injectNotificationManager } from '../../../providers/web-notifications'
 import { commonMessages, truncatedTooltip } from '../../../utils'
+import { buildBackupDownloadUrl, downloadForClient } from '../../../utils/file-download'
 import AutoLink from '../../base/AutoLink.vue'
 import Avatar from '../../base/Avatar.vue'
 
 const { formatMessage } = useVIntl()
+const client = injectModrinthClient(null)
+const pageContext = injectPageContext(null)
+const notifications = injectNotificationManager(null)
 const formatDateTime = useFormatDateTime({
 	timeStyle: 'short',
 	dateStyle: 'long',
@@ -64,6 +71,39 @@ const props = withDefaults(
 )
 
 const nameRef = ref<HTMLElement | null>(null)
+const isDownloading = ref(false)
+
+const downloadUrl = computed(() => {
+	if (!props.kyrosUrl || !props.jwt) return undefined
+	try {
+		const url = buildBackupDownloadUrl(props.kyrosUrl, props.backup.id, props.jwt)
+		return client?.resolveMediaUrl(url) ?? url
+	} catch {
+		return undefined
+	}
+})
+
+async function downloadBackup() {
+	if (!downloadUrl.value || isDownloading.value) return
+	isDownloading.value = true
+	try {
+		const saved = await downloadForClient(
+			client,
+			pageContext,
+			downloadUrl.value,
+			`backup-${props.backup.id}.zip`,
+		)
+		if (saved !== false) emit('download')
+	} catch {
+		notifications?.addNotification({
+			title: formatMessage(commonMessages.downloadFailedLabel),
+			text: formatMessage(messages.downloadFailed),
+			type: 'error',
+		})
+	} finally {
+		isDownloading.value = false
+	}
+}
 
 const backupCreator = computed(() => {
 	if (props.creator !== undefined) return props.creator
@@ -109,13 +149,16 @@ const overflowMenuOptions = computed<ButtonMenuOption[]>(() => {
 		options.push({ type: 'divider' })
 	}
 
-	options.push({
+	const downloadOption = {
 		id: 'download',
 		label: formatMessage(commonMessages.downloadButton),
-		type: 'link',
-		href: `https://${props.kyrosUrl}/modrinth/v0/backups/${props.backup.id}/download?auth=${props.jwt}`,
-		disabled: !props.kyrosUrl || !props.jwt,
-	})
+		disabled: !downloadUrl.value || isDownloading.value,
+	}
+	options.push(
+		pageContext?.downloadFile
+			? { ...downloadOption, action: () => void downloadBackup() }
+			: { ...downloadOption, type: 'link', href: downloadUrl.value },
+	)
 
 	options.push({
 		id: 'rename',
@@ -143,6 +186,10 @@ async function copyId() {
 }
 
 const messages = defineMessages({
+	downloadFailed: {
+		id: 'servers.backups.item.download-failed',
+		defaultMessage: 'An error occurred while trying to download the backup.',
+	},
 	restore: {
 		id: 'servers.backups.item.restore',
 		defaultMessage: 'Restore',
@@ -284,7 +331,9 @@ const creatorAvatarSrc = computed(() =>
 				type="quiet"
 				label="More options"
 				:options="overflowMenuOptions"
-				@select="(option) => option.id === 'download' && emit('download')"
+				@select="
+					(option) => option.id === 'download' && !pageContext?.downloadFile && emit('download')
+				"
 			>
 				<MoreVerticalIcon class="size-5" />
 				<template #copy-id>

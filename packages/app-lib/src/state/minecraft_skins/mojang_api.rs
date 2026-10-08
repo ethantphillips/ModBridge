@@ -17,6 +17,18 @@ use crate::{
     util::fetch::{INSECURE_REQWEST_CLIENT, relay_request},
 };
 
+pub(crate) fn require_online_credentials(
+    credentials: &Credentials,
+) -> crate::Result<()> {
+    if credentials.is_offline() {
+        return Err(ErrorKind::InputError(
+            "Offline profiles can save and preview skins, but cannot apply skins or capes in Minecraft.".into(),
+        )
+        .into());
+    }
+    Ok(())
+}
+
 /// Provides operations for interacting with capes on a Minecraft player profile.
 pub struct MinecraftCapeOperation;
 
@@ -25,12 +37,13 @@ impl MinecraftCapeOperation {
         credentials: &Credentials,
         cape_id: Uuid,
     ) -> crate::Result<()> {
+        require_online_credentials(credentials)?;
         update_profile_cache_from_response(
             relay_request(
                 &INSECURE_REQWEST_CLIENT,
                 reqwest::Method::PUT,
                 "https://api.minecraftservices.com/minecraft/profile/capes/active",
-            )
+			)?
             .header("Content-Type", "application/json; charset=utf-8")
             .header("Accept", "application/json")
             .header("User-Agent", MINECRAFT_SERVICES_USER_AGENT)
@@ -48,12 +61,13 @@ impl MinecraftCapeOperation {
     }
 
     pub async fn unequip_any(credentials: &Credentials) -> crate::Result<()> {
+        require_online_credentials(credentials)?;
         update_profile_cache_from_response(
             relay_request(
                 &INSECURE_REQWEST_CLIENT,
                 reqwest::Method::DELETE,
                 "https://api.minecraftservices.com/minecraft/profile/capes/active",
-            )
+			)?
             .header("Accept", "application/json")
             .header("User-Agent", MINECRAFT_SERVICES_USER_AGENT)
             .bearer_auth(&credentials.access_token)
@@ -81,6 +95,7 @@ impl MinecraftSkinOperation {
         TextureStream::Error: Into<Box<dyn Error + Send + Sync>>,
         Bytes: From<TextureStream::Ok>,
     {
+        require_online_credentials(credentials)?;
         let form = reqwest::multipart::Form::new()
             .text(
                 "variant",
@@ -107,7 +122,7 @@ impl MinecraftSkinOperation {
                 &INSECURE_REQWEST_CLIENT,
                 reqwest::Method::POST,
                 "https://api.minecraftservices.com/minecraft/profile/skins",
-            )
+            )?
             .header("Accept", "application/json")
             .header("User-Agent", MINECRAFT_SERVICES_USER_AGENT)
             .bearer_auth(&credentials.access_token)
@@ -122,12 +137,13 @@ impl MinecraftSkinOperation {
     }
 
     pub async fn unequip_any(credentials: &Credentials) -> crate::Result<()> {
+        require_online_credentials(credentials)?;
         update_profile_cache_from_response(
             relay_request(
                 &INSECURE_REQWEST_CLIENT,
                 reqwest::Method::DELETE,
                 "https://api.minecraftservices.com/minecraft/profile/skins/active",
-            )
+			)?
             .header("Accept", "application/json")
             .header("User-Agent", MINECRAFT_SERVICES_USER_AGENT)
             .bearer_auth(&credentials.access_token)
